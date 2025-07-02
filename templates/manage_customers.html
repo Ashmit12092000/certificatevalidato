@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Manage Customers – Agents SSO Master{% endblock %}
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+  <div class="bg-white p-6 rounded-xl shadow-md mb-8">
+    <h1 class="text-3xl font-extrabold text-gray-900 mb-6">Manage Customers</h1>
+
+    <div class="flex flex-col sm:flex-row flex-wrap gap-4 mb-6">
+      <input type="text" id="filterName" placeholder="Filter by Customer Name" class="flex-grow px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 transition duration-150"/>
+      <input type="text" id="filterEmail" placeholder="Filter by Email" class="flex-grow px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 transition duration-150"/>
+      <input type="text" id="filterGST" placeholder="Filter by GST" class="flex-grow px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 transition duration-150"/>
+      <button onclick="applyFilters()" class="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-200 ease-in-out transform hover:scale-105">
+        <svg class="w-5 h-5 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
+        Apply Filters
+      </button>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-xl shadow-md overflow-hidden">
+    <table class="min-w-full divide-y divide-gray-200">
+      <thead class="bg-gray-50">
+        <tr>
+          <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer ID</th>
+          <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+          <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th> 
+        </tr>
+      </thead>
+      <tbody class="bg-white divide-y divide-gray-200">
+        {% for cust in customers %}
+        <tr class="hover:bg-gray-50 cursor-pointer transition duration-150 ease-in-out" data-href="{{ url_for('customer_details', customer_id=cust.id) }}">
+         
+          <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ cust.code }}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700"><strong>{{ cust.name }}</strong></td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm">
+            {% if cust.status == 'Pending' %}
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 shadow-sm">Pending</span>
+            {% elif cust.status == 'Awaiting Approval' %}
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 shadow-sm">Awaiting Approval</span>
+            {% elif cust.status == 'SSO Setup Pending' %} 
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 shadow-sm">SSO Setup Pending</span>
+            {% elif cust.status == 'Final Approval Pending' %} 
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800 shadow-sm">Final Approval Pending</span>
+            {% elif cust.status == 'Verified' %}
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800 shadow-sm">Verified</span>
+            {% elif cust.status == 'Rejected' %}
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800 shadow-sm">Rejected</span>
+            {% else %}
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gray-200 text-gray-800 shadow-sm">Unknown</span>
+            {% endif %}
+          </td> 
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll("tr[data-href]").forEach(row => {
+      row.addEventListener("click", () => {
+        window.location.href = row.getAttribute("data-href");
+      });
+    });
+function applyFilters(){
+  let name = document.getElementById('filterName').value.toLowerCase();
+  let email = document.getElementById('filterEmail').value.toLowerCase(); 
+  let gst  = document.getElementById('filterGST').value.toLowerCase();
+  document.querySelectorAll('#customerTable tr').forEach(r => {
+    let cols = r.querySelectorAll('td');
+    let show = true;
+    if(name && !cols[1].textContent.toLowerCase().includes(name)) show = false;
+    r.style.display = show ? '' : 'none';
+  });
+}
+
+</script>
+{% endblock %}

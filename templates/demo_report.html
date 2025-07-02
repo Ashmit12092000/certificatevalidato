@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Customer Report{% endblock %}
+{% block content %}
+<div class="max-w-6xl mx-auto py-6">
+  <h1 class="text-2xl font-bold mb-4">Customer Report</h1>
+
+  <input type="text" id="searchInput" onkeyup="filterCustomers()" placeholder="Search customer name..." 
+         class="border px-3 py-2 rounded mb-4 w-full"/>
+
+  <table class="min-w-full bg-white rounded shadow" id="customerTable">
+    <thead class="bg-gray-200">
+      <tr>
+        <th class="p-3">Customer ID</th>
+        <th class="p-3">Customer Name</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for customer in customers %}
+      <tr class="hover:bg-gray-100 border-t cursor-pointer"
+      data-href="{{ url_for('customer_report_detail', customer_id=customer.id) }}">
+        <td class="p-3">{{ customer.code or '—' }}</td>
+        <td class="p-3">{{ customer.name }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+    document.querySelectorAll("tr[data-href]").forEach(row => {
+      row.addEventListener("click", () => {
+        window.location.href = row.getAttribute("data-href");
+      });
+    });
+function filterCustomers() {
+  let input = document.getElementById("searchInput").value.toLowerCase();
+  let rows = document.querySelectorAll("#customerTable tbody tr");
+
+  rows.forEach(row => {
+    let name = row.cells[1].textContent.toLowerCase();
+    row.style.display = name.includes(input) ? "" : "none";
+  });
+}
+</script>
+{% endblock %}
