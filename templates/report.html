@@ -1,32 +1,31 @@
 {% extends "base.html" %}
 {% block title %}Customer Report – Agents SSO Master{% endblock %}
+
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
   <div class="bg-white p-6 rounded-xl shadow-md mb-8">
     <h1 class="text-3xl font-extrabold text-gray-900 mb-6">Customer Report</h1>
-    
+
     <div class="flex flex-col sm:flex-row flex-wrap gap-4 mb-6">
-      <input type="text" id="fName" placeholder="Filter by Customer Name" class="flex-grow px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 transition duration-150"/>
+      <input type="text" id="fName" placeholder="Filter by Customer Name" class="flex-grow px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 transition duration-150" value="{{ request.args.get('name', '') }}"/>
       <select id="fStatus" class="flex-grow px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 transition duration-150">
         <option value="">All Status</option>
-        <option>Active</option>
-        <option>Expired</option>
-        <option>Unverified</option>
-        <option>Rejected</option>
+        <option {% if request.args.get('status') == 'Active' %}selected{% endif %}>Active</option>
+        <option {% if request.args.get('status') == 'Expired' %}selected{% endif %}>Expired</option>
+        <option {% if request.args.get('status') == 'Unverified' %}selected{% endif %}>Unverified</option>
+        <option {% if request.args.get('status') == 'Rejected' %}selected{% endif %}>Rejected</option>
       </select>
       <select id="fType" class="flex-grow px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 transition duration-150">
         <option value="">All Types</option>
         {% for t in cert_types %}
-          <option>{{ t }}</option>
+          <option {% if request.args.get('type') == t %}selected{% endif %}>{{ t }}</option>
         {% endfor %}
       </select>
       <button onclick="applyReportFilters()" class="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-200 ease-in-out transform hover:scale-105">
-        <svg class="w-5 h-5 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
         Apply Filters
       </button>
       <a href="{{ url_for('download_report', name=request.args.get('name',''), status=request.args.get('status',''), type=request.args.get('type','')) }}"
          class="flex items-center px-6 py-2 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 transition duration-200 ease-in-out transform hover:scale-105">
-        <svg class="w-5 h-5 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
         Download Report CSV
       </a>
     </div>
@@ -36,13 +35,29 @@
     <table class="min-w-full divide-y divide-gray-200">
       <thead class="bg-gray-50">
         <tr>
-          <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer ID</th>
-          <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-          <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-          <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-          <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Activation</th>
-          <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiry</th>
-          <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Certs</th>
+          {% macro sort_link(label, key) %}
+            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <a href="{{ url_for('report', 
+                                  sort_by=key, 
+                                  order_by='ASC' if current_sort_by != key or current_order_by == 'DESC' else 'DESC',
+                                  name=request.args.get('name',''), 
+                                  status=request.args.get('status',''), 
+                                  type=request.args.get('type','')) }}">
+                {{ label }}
+                {% if current_sort_by == key %}
+                  {% if current_order_by == 'ASC' %} ↑ {% else %} ↓ {% endif %}
+                {% endif %}
+              </a>
+            </th>
+          {% endmacro %}
+
+          {{ sort_link('Customer ID', 'customer_id') }}
+          {{ sort_link('Customer', 'customer_name') }}
+          {{ sort_link('Type', 'cert_type') }}
+          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Activation</th>
+          {{ sort_link('Expiry', 'expiration_date') }}
+          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Certs</th>
         </tr>
       </thead>
       <tbody class="bg-white divide-y divide-gray-200">
@@ -87,6 +102,9 @@ function applyReportFilters(){
   if(name) params.set('name', name);
   if(status) params.set('status', status);
   if(type) params.set('type', type);
+  // Retain sorting
+  params.set('sort_by', "{{ current_sort_by }}");
+  params.set('order_by', "{{ current_order_by }}");
   window.location = "{{ url_for('report') }}?" + params.toString();
 }
 </script>
