@@ -23,31 +23,63 @@
           <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer ID</th>
           <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
           <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th> 
+          <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
         </tr>
       </thead>
       <tbody class="bg-white divide-y divide-gray-200">
         {% for cust in customers %}
-        <tr class="hover:bg-gray-50 cursor-pointer transition duration-150 ease-in-out" data-href="{{ url_for('customer_details', customer_id=cust.id) }}">
+        <tr class="hover:bg-gray-50 transition duration-150 ease-in-out">
          
-          <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ cust.code }}</td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700"><strong>{{ cust.name }}</strong></td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+            <a href="{{ url_for('customer_details', customer_id=cust.id) }}" class="block w-full h-full text-gray-900 hover:text-blue-600">
+              {{ cust.code }}
+            </a>
+          </td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+            <a href="{{ url_for('customer_details', customer_id=cust.id) }}" class="block w-full h-full text-gray-700 hover:text-blue-600">
+              <strong>{{ cust.name }}</strong>
+            </a>
+          </td>
           <td class="px-6 py-4 whitespace-nowrap text-sm">
-            {% if cust.status == 'Pending' %}
-              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 shadow-sm">Pending</span>
-            {% elif cust.status == 'Awaiting Approval' %}
-              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 shadow-sm">Awaiting Approval</span>
-            {% elif cust.status == 'SSO Setup Pending' %} 
-              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 shadow-sm">SSO Setup Pending</span>
-            {% elif cust.status == 'Final Approval Pending' %} 
-              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800 shadow-sm">Final Approval Pending</span>
-            {% elif cust.status == 'Verified' %}
-              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800 shadow-sm">Verified</span>
-            {% elif cust.status == 'Rejected' %}
-              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800 shadow-sm">Rejected</span>
-            {% else %}
-              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gray-200 text-gray-800 shadow-sm">Unknown</span>
-            {% endif %}
+            <a href="{{ url_for('customer_details', customer_id=cust.id) }}" class="block w-full h-full">
+              {% if cust.status == 'Pending' %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 shadow-sm">Pending</span>
+              {% elif cust.status == 'Awaiting Approval' %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 shadow-sm">Awaiting Approval</span>
+              {% elif cust.status == 'SSO Setup Pending' %} 
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 shadow-sm">SSO Setup Pending</span>
+              {% elif cust.status == 'Final Approval Pending' %} 
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800 shadow-sm">Final Approval Pending</span>
+              {% elif cust.status == 'Verified' %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800 shadow-sm">Verified</span>
+              {% elif cust.status == 'Rejected' %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800 shadow-sm">Rejected</span>
+              {% else %}
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gray-200 text-gray-800 shadow-sm">Unknown</span>
+              {% endif %}
+            </a>
           </td> 
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-medium">
+            <div class="flex items-center space-x-2">
+              {% if session.role == 'supervisor' or session.role == 'admin_hod' %}
+                {% if cust.status == 'Pending' %} 
+                  <form action="{{ url_for('generate_role_report', customer_id=cust.id) }}" method="POST">
+                    <button type="submit" class="px-3 py-1 bg-purple-600 text-white text-xs rounded-md hover:bg-purple-700 transition duration-150">Generate Report</button>
+                  </form>
+                {% elif cust.status == 'SSO Setup Pending' %}
+                  <form action="{{ url_for('mark_sso_complete', customer_id=cust.id) }}" method="POST">
+                    <button type="submit" class="px-3 py-1 bg-orange-600 text-white text-xs rounded-md hover:bg-orange-700 transition duration-150">Mark SSO Complete</button>
+                  </form>
+                {% elif cust.status == 'Rejected' %}
+                  <a href="{{ url_for('edit_customer_certificates', customer_id=cust.id) }}"
+                     class="px-3 py-1 bg-red-500 text-white text-xs rounded-md hover:bg-red-600 transition duration-150">Re-submit Certificates</a>
+                {% endif %}
+                <form action="/delete-customer/{{ cust.id }}" method="POST" onsubmit="return confirm('Delete this customer and all certificates?')">
+                  <button type="submit" class="px-3 py-1 bg-gray-400 text-gray-800 text-xs rounded-md hover:bg-gray-500 transition duration-150">Delete</button>
+                </form>
+              {% endif %}
+            </div>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -56,11 +88,6 @@
 </div>
 
 <script>
-  document.querySelectorAll("tr[data-href]").forEach(row => {
-      row.addEventListener("click", () => {
-        window.location.href = row.getAttribute("data-href");
-      });
-    });
 function applyFilters(){
   let name = document.getElementById('filterName').value.toLowerCase();
   let email = document.getElementById('filterEmail').value.toLowerCase(); 
