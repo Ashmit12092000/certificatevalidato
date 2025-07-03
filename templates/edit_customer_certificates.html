@@ -90,7 +90,10 @@
                             class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
                       <option value="">-- Select Software to assign modules --</option>
                       {% for app in all_software_apps %}
-                        <option value="{{ app.id }}" {% if cert.granted_software_modules and (cert.granted_software_modules | from_json | first).software_name == app.name %}selected{% endif %}>{{ app.name }}</option>
+                        <option value="{{ app.id }}" 
+                                {% if cert.granted_software_modules and (cert.granted_software_modules | from_json | first).software_name == app.name %}selected{% endif %}>
+                          {{ app.name }}
+                        </option>
                       {% endfor %}
                     </select>
                 </div>
