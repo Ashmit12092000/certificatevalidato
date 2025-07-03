@@ -7,7 +7,7 @@
 
     <div class="flex flex-col sm:flex-row flex-wrap gap-4 mb-6">
       <input type="text" id="filterName" name="name_filter" placeholder="Filter by Customer Name" class="flex-grow px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 transition duration-150" value="{{ name_filter_val }}"/>
-      {# Removed filter inputs for Email and GST from UI #}
+      {# Removed filter inputs for Email and GST from UI as per previous request #}
       <button onclick="applyFilters()" class="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-200 ease-in-out transform hover:scale-105">
         <svg class="w-5 h-5 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
         Apply Filters
@@ -45,6 +45,7 @@
           {{ sort_link('Name', 'name') }}
           {# Removed Email, Phone, PAN, GST, Address columns from here #}
           {{ sort_link('Status', 'status') }}
+          <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Remarks</th> {# New Remarks Column Header #}
           <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
         </tr>
       </thead>
@@ -82,13 +83,20 @@
               {% endif %}
             </a>
           </td> 
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700"> {# New Remarks Data Cell #}
+            {{ cust.final_approver_notes_from_report or 'N/A' }}
+          </td>
           <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-medium">
             <div class="flex items-center space-x-2">
               {% if session.role == 'supervisor' or session.role == 'admin_hod' %}
-                {% if cust.status == 'Pending' %} 
-                  <form action="{{ url_for('generate_role_report', customer_id=cust.id) }}" method="POST">
-                    <button type="submit" class="px-3 py-1 bg-purple-600 text-white text-xs rounded-md hover:bg-purple-700 transition duration-150">Generate Report</button>
-                  </form>
+                {% if cust.status == 'Pending' %}
+                  {% if cust.total_certs > 0 %} {# Show button only if pending AND has certificates #}
+                    <form action="{{ url_for('generate_role_report', customer_id=cust.id) }}" method="POST">
+                      <button type="submit" class="px-3 py-1 bg-purple-600 text-white text-xs rounded-md hover:bg-purple-700 transition duration-150">Generate Report</button>
+                    </form>
+                  {% else %} {# If pending but no certificates #}
+                    <span class="text-gray-500 text-xs italic">No certificates assigned.</span>
+                  {% endif %}
                 {% elif cust.status == 'SSO Setup Pending' %}
                   <form action="{{ url_for('mark_sso_complete', customer_id=cust.id) }}" method="POST">
                     <button type="submit" class="px-3 py-1 bg-orange-600 text-white text-xs rounded-md hover:bg-orange-700 transition duration-150">Mark SSO Complete</button>
