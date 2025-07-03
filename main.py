@@ -16,7 +16,7 @@ from dateutil.relativedelta import relativedelta
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
 
-DATABASE = 'database.db'
+DATABASE = 'databases.db'
 SUPERVISOR_EMAIL = "supervisor@gmail.com"
 ADMIN_HOD_EMAIL = "admin@gmail.com"
 
@@ -44,7 +44,7 @@ def init_db():
             name TEXT,
             email TEXT UNIQUE,
             password TEXT,
-            role TEXT
+            role TEXT -- 'operator', 'supervisor', 'admin_hod'
         )''')
 
         cur.execute('''CREATE TABLE IF NOT EXISTS customers (
@@ -112,6 +112,121 @@ def get_db_connection():
 @app.route('/')
 def index():
     return redirect(url_for('login'))
+# Add this GET route to your main.py
+@app.route('/edit-customer-certificates/<int:customer_id>', methods=["GET"])
+def edit_customer_certificates(customer_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    # Only Supervisor and Admin (HOD) can access this page
+    if session.get("role") not in ["supervisor", "admin_hod"]:
+        flash("Unauthorized to edit customer certificates.", "error")
+        return redirect(url_for('dashboard'))
+
+    conn = get_db_connection()
+    customer = conn.execute("SELECT * FROM customers WHERE id = ?", (customer_id,)).fetchone()
+    
+    if not customer:
+        flash("Customer not found.", "error")
+        conn.close()
+        return redirect(url_for('manage_customers'))
+
+    # Fetch all certificates for this customer, including those that are rejected
+    certificates_raw = conn.execute("""
+        SELECT * FROM certificates WHERE customer_id = ? ORDER BY cert_type ASC
+    """, (customer_id,)).fetchall()
+    # Convert Row objects to dicts for JSON serialization in template
+    certificates = [dict(row) for row in certificates_raw]
+
+
+    # Fetch all master data needed for dropdowns in the form
+    cert_types_query = conn.execute("SELECT name FROM certificate_types ORDER BY name ASC").fetchall()
+    cert_types = [ct[0] for ct in cert_types_query]
+
+    all_software_apps = conn.execute("SELECT * FROM software_applications ORDER BY name").fetchall()
+    all_software_modules = conn.execute("SELECT * FROM software_modules ORDER BY software_id, name").fetchall()
+    
+    software_apps_list = [dict(row) for row in all_software_apps]
+    software_modules_list = [dict(row) for row in all_software_modules]
+    
+    all_software_apps_json = json.dumps(software_apps_list)
+    all_software_modules_json = json.dumps(software_modules_list)
+
+    conn.close()
+
+    return render_template("edit_customer_certificates.html", 
+                           customer=customer, 
+                           certificates=certificates, # Pass as list of dicts
+                           cert_types=cert_types,
+                           all_software_apps=software_apps_list, # Pass as list of dicts
+                           all_software_modules_json=all_software_modules_json, # Pass as JSON string
+                           role=session.get("role")
+                           )
+
+@app.route('/update-customer-certificates/<int:customer_id>', methods=["POST"])
+def update_customer_certificates(customer_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    # Only Supervisor and Admin (HOD) can update customer certificates
+    if session.get("role") not in ["supervisor", "admin_hod"]:
+        flash("Unauthorized to update customer certificates.", "error")
+        return redirect(url_for('dashboard'))
+
+    conn = get_db_connection()
+    try:
+        customer = conn.execute("SELECT * FROM customers WHERE id = ?", (customer_id,)).fetchone()
+        if not customer:
+            flash("Customer not found.", "error")
+            return redirect(url_for('manage_customers'))
+
+        # Parse the JSON string containing all certificate data from the form
+        certificates_data_json = request.form.get('certificates_data')
+        print("certificates_data_json: "+str(certificates_data_json))
+        if not certificates_data_json:
+            flash("No certificate data received for update.", "error")
+            return redirect(url_for('edit_customer_certificates', customer_id=customer_id))
+        
+        updated_certificates = json.loads(certificates_data_json)
+
+        for cert_data in updated_certificates:
+            cert_id = cert_data['id']
+            cert_type = cert_data['cert_type']
+            activation_date = cert_data['activation_date']
+            expiration_date = cert_data['expiration_date']
+            granted_software_modules = cert_data['granted_software_modules'] # Already JSON stringified from JS
+
+            # Calculate new status based on dates
+            act_date_obj = datetime.strptime(activation_date, "%Y-%m-%d")
+            exp_date_obj = datetime.strptime(expiration_date, "%Y-%m-%d")
+            today = datetime.today().date()
+            new_status = "Expired" if exp_date_obj.date() < today else "Active"
+
+            conn.execute("""
+                UPDATE certificates SET 
+                    cert_type = ?,
+                    activation_date = ?, 
+                    expiration_date = ?, 
+                    status = ?,
+                    verified = 0, -- Reset verified status to 0
+                    granted_software_modules = ?
+                WHERE id = ?
+            """, (cert_type, activation_date, expiration_date, new_status, granted_software_modules, cert_id))
+        
+        # Reset customer status to Pending and delete old role reports
+        conn.execute("UPDATE customers SET status = 'Pending' WHERE id = ?", (customer_id,))
+        conn.execute("DELETE FROM role_reports WHERE customer_id = ?", (customer_id,))
+
+        conn.commit()
+        flash(f"Certificates for {customer['name']} updated successfully! Workflow re-enabled for approval.", "success")
+
+    except Exception as e:
+        print(f"Error updating customer certificates for customer_id {customer_id}: {e}")
+        flash(f"Error updating customer certificates: {e}", "error")
+    finally:
+        conn.close()
+    
+    return redirect(url_for('manage_customers')) # Redirect to manage customers after re-submission
 
 @app.route('/login', methods=["GET", "POST"])
 def login():
@@ -365,13 +480,11 @@ def customer_details(customer_id):
         ORDER BY generated_date DESC LIMIT 1
     """, (customer_id,)).fetchone()
     
-    # Ensure latest_report is a dictionary or None, not a Row object if empty
     if latest_report:
         latest_report = dict(latest_report)
     else:
-        latest_report = None # Explicitly set to None if no report found
+        latest_report = None
 
-    # Fetch all software and modules for the add certificate modal (needed if modal is included here)
     all_software_apps = conn.execute("SELECT * FROM software_applications ORDER BY name").fetchall()
     all_software_modules = conn.execute("SELECT * FROM software_modules ORDER BY software_id, name").fetchall()
     
@@ -387,10 +500,10 @@ def customer_details(customer_id):
     return render_template("customer_details.html", 
                            customer=customer, 
                            certificates=certificates,
-                           latest_report=latest_report, # Pass the potentially None or dict latest_report
+                           latest_report=latest_report,
                            role=session.get("role"),
-                           all_software_apps=software_apps_list, # Pass for modal
-                           all_software_modules_json=all_software_modules_json # Pass for modal
+                           all_software_apps=software_apps_list,
+                           all_software_modules_json=all_software_modules_json
                            )
 
 @app.route('/update-customer/<int:customer_id>', methods=["POST"])
@@ -460,7 +573,7 @@ def manage_certificates():
     combined = manual_types + [r for r in auto_types if r['name'] not in [m['name'] for m in manual_types]]
     return render_template("manage_certificates.html", cert_types=combined)
 
-@app.route('/add-cert-type', methods=['POST'])
+@app.route('/add-cert-type', methods=["POST"])
 def add_certificate_type():
     if 'user_id' not in session:
         return redirect(url_for('login'))
@@ -520,10 +633,23 @@ def report():
     name_filter = request.args.get('name', '').strip().lower()
     status_filter = request.args.get('status', '')
     type_filter = request.args.get('type', '')
+    sort_by = request.args.get('sort_by', 'c.name')
+    order_by = request.args.get('order_by', 'ASC')
+
+    valid_sort_columns = {
+        'customer_id': 'c.id',
+        'customer_name': 'c.name',
+        'cert_type': 'cert.cert_type',
+        'expiration_date': 'cert.expiration_date'
+    }
+    # Fallback to c.name if invalid
+    sort_column = valid_sort_columns.get(sort_by, 'c.name')
+    if order_by.upper() not in ['ASC', 'DESC']:
+        order_by = 'ASC'
 
     conn = get_db_connection()
 
-    query = '''
+    query = f'''
         SELECT c.id AS customer_id, c.name AS customer_name, c.code AS customer_code,
                cert.cert_type, cert.status,
                cert.activation_date, cert.expiration_date,
@@ -532,6 +658,7 @@ def report():
         FROM certificates cert
         JOIN customers c ON cert.customer_id = c.id
     '''
+
     filters = []
     params = []
 
@@ -548,14 +675,19 @@ def report():
     if filters:
         query += " WHERE " + " AND ".join(filters)
 
-    query += " ORDER BY c.name ASC, cert.cert_type ASC"
+    query += f" ORDER BY {sort_column} {order_by}"
 
     report = conn.execute(query, params).fetchall()
-
     cert_types = [row["cert_type"] for row in conn.execute("SELECT DISTINCT cert_type FROM certificates").fetchall()]
     conn.close()
 
-    return render_template("report.html", report=report, cert_types=cert_types)
+    return render_template("report.html", 
+        report=report, 
+        cert_types=cert_types,
+        current_sort_by=sort_by,
+        current_order_by=order_by,
+        request=request
+    )
 
 @app.route('/download-report')
 def download_report():
@@ -764,11 +896,21 @@ def update_certificate_dates(cert_id):
             UPDATE certificates SET 
                 activation_date = ?, 
                 expiration_date = ?, 
-                status = ?
+                status = ?,
+                verified = 0 -- Reset verified status to 0
             WHERE id = ?
         """, (activation_date, expiration_date, new_status, cert_id))
+        
+        # Also reset customer status to Pending if it was Verified or Rejected
+        customer_id = cert['customer_id']
+        customer = conn.execute("SELECT status FROM customers WHERE id = ?", (customer_id,)).fetchone()
+        if customer and customer['status'] in ['Verified', 'Rejected']:
+            conn.execute("UPDATE customers SET status = 'Pending' WHERE id = ?", (customer_id,))
+            # Delete any existing role reports for this customer to clear the old workflow instance
+            conn.execute("DELETE FROM role_reports WHERE customer_id = ?", (customer_id,))
+
         conn.commit()
-        flash("Certificate dates updated successfully!", "success")
+        flash("Certificate dates updated successfully! Workflow re-enabled for approval.", "success")
 
     except Exception as e:
         print(f"Error updating certificate dates for cert_id {cert_id}: {e}")
@@ -1088,8 +1230,7 @@ def delete_customer(id):
     except Exception as e:
         flash(f"Error deleting customer: {e}", "error")
 
-    return redirect(url_for('manage_customers'))
-
+    return redirect(url_for('dashboard'))
 
 @app.route('/logout')
 def logout():
