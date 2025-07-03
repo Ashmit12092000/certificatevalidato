@@ -1,6 +1,6 @@
 import os
 import sqlite3
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, Response
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, Response,send_file
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 import re
@@ -9,7 +9,7 @@ import csv
 import random
 import string
 import json
-
+from xhtml2pdf import pisa
 from dateutil.relativedelta import relativedelta
 
 # --- App Initialization ---
@@ -509,7 +509,6 @@ def manage_customers():
         'code': 'code',
         'name': 'name',
         'status': 'status'
-        # Removed email, phone, pan, gst, address from sortable columns
     }
 
     sort_column = valid_sort_columns.get(sort_by, 'name')
@@ -518,19 +517,36 @@ def manage_customers():
 
     conn = get_db_connection()
 
-    query = "SELECT * FROM customers"
+    # SQL query to fetch customers along with their total certificate count
+    query = """
+        SELECT
+            c.*,
+            (SELECT COUNT(*) FROM certificates WHERE customer_id = c.id) as total_certs,
+            latest_report.final_approver_notes AS final_approver_notes_from_report
+        FROM customers c
+        LEFT JOIN (
+            SELECT
+                customer_id,
+                final_approver_notes,
+                MAX(generated_date) as latest_generated_date
+            FROM role_reports
+            WHERE status = 'Completed'
+            GROUP BY customer_id
+        ) AS latest_report ON c.id = latest_report.customer_id
+    """
     filters = []
     params = []
 
     if name_filter:
-        filters.append("LOWER(name) LIKE ?")
+        filters.append("LOWER(c.name) LIKE ?")
         params.append(f"%{name_filter}%")
-    # Removed email_filter and gst_filter from query construction
-    if email_filter: # Keep the email_filter as it could be used for advanced search/reporting later even if not displayed
-        filters.append("LOWER(email) LIKE ?")
+    # Keep these filters in the backend query even if not displayed in UI,
+    # in case they are used for advanced search/reporting later.
+    if email_filter:
+        filters.append("LOWER(c.email) LIKE ?")
         params.append(f"%{email_filter}%")
-    if gst_filter: # Keep the gst_filter as it could be used for advanced search/reporting later even if not displayed
-        filters.append("LOWER(gst) LIKE ?")
+    if gst_filter:
+        filters.append("LOWER(c.gst) LIKE ?")
         params.append(f"%{gst_filter}%")
 
     if filters:
@@ -547,18 +563,18 @@ def manage_customers():
                            current_sort_by=sort_by,
                            current_order_by=order_by,
                            name_filter_val=name_filter,
-                           email_filter_val=email_filter, # Still pass to template in case it's re-added to UI
-                           gst_filter_val=gst_filter, # Still pass to template in case it's re-added to UI
+                           email_filter_val=email_filter,
+                           gst_filter_val=gst_filter,
                            request=request
                           )
-
 @app.route('/customer-details/<int:customer_id>')
 def customer_details(customer_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
     conn = get_db_connection()
-    customer = conn.execute("SELECT * FROM customers WHERE id = ?", (customer_id,)).fetchone()
+    # Updated SQL query to include total_certs count for the specific customer
+    customer = conn.execute("SELECT *, (SELECT COUNT(*) FROM certificates WHERE customer_id = customers.id) as total_certs FROM customers WHERE id = ?", (customer_id,)).fetchone()
     
     if not customer:
         flash("Customer not found.", "error")
@@ -600,7 +616,62 @@ def customer_details(customer_id):
                            all_software_apps=software_apps_list,
                            all_software_modules_json=all_software_modules_json
                            )
+@app.route('/customer-details/<int:customer_id>/pdf')
+def generate_customer_pdf(customer_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
 
+    if session.get("role") not in ["supervisor", "admin_hod"]:
+        flash("Unauthorized to generate PDF report.", "error")
+        return redirect(url_for('customer_details', customer_id=customer_id))
+
+    conn = get_db_connection()
+    customer = conn.execute("SELECT * FROM customers WHERE id = ?", (customer_id,)).fetchone()
+    if not customer:
+        flash("Customer not found.", "error")
+        conn.close()
+        return redirect(url_for('manage_customers'))
+
+    certificates_raw = conn.execute("""
+        SELECT * FROM certificates WHERE customer_id = ? ORDER BY cert_type ASC
+    """, (customer_id,)).fetchall()
+    certificates = [dict(row) for row in certificates_raw]
+
+    # These lists are not strictly necessary for rendering granted_software_modules in PDF
+    # because granted_software_modules already contains software_name and module_name.
+    # However, they are passed for consistency with customer_details route context.
+    all_software_apps = conn.execute("SELECT * FROM software_applications ORDER BY name").fetchall()
+    all_software_modules = conn.execute("SELECT * FROM software_modules ORDER BY software_id, name").fetchall()
+    
+    software_apps_list = [dict(row) for row in all_software_apps]
+    software_modules_list = [dict(row) for row in all_software_modules]
+
+    conn.close()
+
+    # Render HTML to a string using a dedicated PDF template
+    rendered_html = render_template('pdf_customer_details.html',
+                                    customer=customer,
+                                    certificates=certificates,
+                                    # Pass necessary data for granted_software_modules parsing if needed by from_json filter
+                                    # all_software_apps=software_apps_list, # Not strictly used in PDF template for granted_software_modules display
+                                    # all_software_modules_json=json.dumps(software_modules_list), # Not strictly used in PDF template for granted_software_modules display
+                                    user_email=session.get('user_email'),
+                                    current_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                   )
+
+    # Create PDF
+    pdf = pisa.CreatePDF(
+        rendered_html,
+        dest=None # file handle or path to write to, None to return StringIO
+    )
+
+    if not pdf.err:
+        # Return the PDF as a file download
+        return Response(pdf.dest.getvalue(), mimetype='application/pdf',
+                        headers={'Content-Disposition': f'attachment;filename={customer["name"].replace(" ", "_")}_details.pdf'})
+    
+    flash("Error generating PDF.", "error")
+    return redirect(url_for('customer_details', customer_id=customer_id))
 @app.route('/update-customer/<int:customer_id>', methods=["POST"])
 def update_customer(customer_id):
     if 'user_id' not in session:
