@@ -1,7 +1,7 @@
 <div id="addCertModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 p-4">
   <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md transform transition-all duration-300 scale-100 opacity-100">
     <h2 class="text-2xl font-bold text-gray-900 mb-6">Add New Certificate</h2>
-    <form action="{{ url_for('add_certificate') }}" method="POST" class="space-y-5">
+    <form action="{{ url_for('add_certificate') }}" method="POST" class="space-y-5" id="addCertForm">
       <div>
         <label for="customer_id" class="block text-sm font-medium text-gray-700 mb-1">Select Customer</label>
         <select name="customer_id" id="customer_id" required 
@@ -33,21 +33,15 @@
                class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 transition duration-150"/>
       </div>
 
-      {# Software and Modules Selection #}
-      <div>
-        <label for="software_select" class="block text-sm font-medium text-gray-700 mb-1">Select Software</label>
-        <select name="software_select" id="software_select" 
-                class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 transition duration-150">
-          <option value="">-- Select Software to assign modules --</option>
-          {# Loop to populate software options directly from passed data #}
-          {% for app in all_software_apps %}
-            <option value="{{ app.id }}">{{ app.name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div id="modules_checkboxes" class="space-y-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
-        <p class="text-sm text-gray-500">Select a software to see modules.</p>
+      {# Dynamic Software/Modules Selection Section #}
+      <div class="border border-gray-300 rounded-lg p-4 bg-gray-50">
+          <h3 class="text-lg font-semibold text-gray-800 mb-3">Assign Software & Modules</h3>
+          <div id="software-modules-container" class="space-y-4">
+              {# Software/Module blocks will be added here by JS #}
+          </div>
+          <button type="button" id="addSoftwareModuleBtn" class="mt-4 px-4 py-2 bg-indigo-500 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-600 transition duration-200 text-sm">
+              + Add Software Assignment
+          </button>
       </div>
 
       <div class="flex justify-end space-x-3">
@@ -65,70 +59,131 @@
 </div>
 
 <script>
-// This script runs when the modal HTML is included.
-// It relies on global variables allSoftwareAppsData and allSoftwareModulesData
-// being populated by the parent dashboard.html script.
-
-document.addEventListener('DOMContentLoaded', function() {
-const softwareSelect = document.getElementById('software_select');
-const modulesCheckboxesDiv = document.getElementById('modules_checkboxes');
-const addCertModal = document.getElementById('addCertModal');
-
-// Function to populate modules based on selected software
-function populateModules() {
-  const selectedSoftwareId = softwareSelect.value;
-  modulesCheckboxesDiv.innerHTML = ''; // Clear previous modules
-
-  // Ensure allSoftwareModulesData is defined and not empty
-  if (!window.allSoftwareModulesData || window.allSoftwareModulesData.length === 0) {
-    modulesCheckboxesDiv.innerHTML = '<p class="text-sm text-gray-500">No modules configured yet. Please add software and modules in the admin panel.</p>';
-    return;
-  }
-
-  if (selectedSoftwareId) {
-    const relevantModules = window.allSoftwareModulesData.filter(module => 
-      module.software_id == selectedSoftwareId
-    );
-
-    if (relevantModules.length > 0) {
-      relevantModules.forEach(module => {
-        const checkboxDiv = document.createElement('div');
-        checkboxDiv.className = 'flex items-center';
-        checkboxDiv.innerHTML = `
-          <input type="checkbox" name="selected_modules" value="${module.id}" id="module_${module.id}"
-                 class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-          <label for="module_${module.id}" class="ml-2 block text-sm text-gray-700">${module.name}</label>
+  const allSoftwareAppsGlobal = {{ all_software_apps | tojson | safe }};
+  const allSoftwareModulesGlobal = {{ all_software_modules_json | safe }};
+  
+  document.addEventListener('DOMContentLoaded', function() {
+    const addCertForm = document.getElementById('addCertForm');
+    const softwareModulesContainer = document.getElementById('software-modules-container');
+    const addSoftwareModuleBtn = document.getElementById('addSoftwareModuleBtn');
+    let softwareBlockCounter = 0;
+  
+    function createSoftwareModuleBlock(preSelectedSoftwareId = '', preSelectedModuleIds = []) {
+        const blockId = `software-block-${softwareBlockCounter++}`;
+        const div = document.createElement('div');
+        div.id = blockId;
+        div.className = 'p-3 border border-gray-200 rounded-lg bg-gray-100 relative';
+        div.innerHTML = `
+            <button type="button" class="absolute top-2 right-2 text-gray-500 hover:text-red-700" onclick="document.getElementById('${blockId}').remove()">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+            <div class="mb-3">
+                <label for="software_select_${softwareBlockCounter - 1}" class="block text-sm font-medium text-gray-700 mb-1">Software:</label>
+                <select name="software_select_${softwareBlockCounter - 1}" id="software_select_${softwareBlockCounter - 1}" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                    <option value="">-- Select Software --</option>
+                    ${allSoftwareAppsGlobal.map(app => 
+                        `<option value="${app.id}" ${preSelectedSoftwareId == app.id ? 'selected' : ''}>${app.name}</option>`
+                    ).join('')}
+                </select>
+            </div>
+            <div id="modules_checkboxes_${softwareBlockCounter - 1}" class="space-y-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <p class="text-sm text-gray-500">Select a software to see modules.</p>
+            </div>
         `;
-        modulesCheckboxesDiv.appendChild(checkboxDiv);
-      });
-    } else {
-      modulesCheckboxesDiv.innerHTML = '<p class="text-sm text-gray-500">No modules available for this software.</p>';
-    }
-  } else {
-    modulesCheckboxesDiv.innerHTML = '<p class="text-sm text-gray-500">Select a software to see modules.</p>';
-  }
-}
-
-// Attach event listener to software select dropdown
-if (softwareSelect) {
-  softwareSelect.addEventListener('change', populateModules);
-}
-
-// Listen for when the addCertModal is opened to populate modules initially
-if (addCertModal) {
-  const observer = new MutationObserver((mutationsList, observer) => {
-    for (const mutation of mutationsList) {
-      if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-        if (!addCertModal.classList.contains('hidden')) {
-          // Modal is now visible, populate modules (if a software is pre-selected or default)
-          populateModules();
-          // Disconnect observer after first successful populate to prevent re-triggering
-          observer.disconnect(); 
+        softwareModulesContainer.appendChild(div);
+  
+        const currentSoftwareSelect = div.querySelector(`#software_select_${softwareBlockCounter - 1}`);
+        const currentModulesCheckboxesDiv = div.querySelector(`#modules_checkboxes_${softwareBlockCounter - 1}`);
+  
+        function populateModulesForBlock() {
+            const selectedSoftwareId = currentSoftwareSelect.value;
+            currentModulesCheckboxesDiv.innerHTML = '';
+  
+            if (selectedSoftwareId) {
+                const relevantModules = allSoftwareModulesGlobal.filter(module => 
+                    module.software_id == parseInt(selectedSoftwareId)
+                );
+  
+                if (relevantModules.length > 0) {
+                    relevantModules.forEach(module => {
+                        const checkboxDiv = document.createElement('div');
+                        checkboxDiv.className = 'flex items-center';
+  
+                        const isChecked = preSelectedModuleIds.includes(module.id);
+  
+                        checkboxDiv.innerHTML = `
+                            <input type="checkbox" name="selected_modules_${softwareBlockCounter - 1}" value="${module.id}" id="module_${softwareBlockCounter - 1}_${module.id}"
+                                class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" ${isChecked ? 'checked' : ''}>
+                            <label for="module_${softwareBlockCounter - 1}_${module.id}" class="ml-2 block text-sm text-gray-700">${module.name}</label>
+                        `;
+                        currentModulesCheckboxesDiv.appendChild(checkboxDiv);
+                    });
+                } else {
+                    currentModulesCheckboxesDiv.innerHTML = '<p class="text-sm text-gray-500">No modules available for this software.</p>';
+                }
+            } else {
+                currentModulesCheckboxesDiv.innerHTML = '<p class="text-sm text-gray-500">Select a software to see modules.</p>';
+            }
         }
-      }
+  
+        currentSoftwareSelect.addEventListener('change', populateModulesForBlock);
+        populateModulesForBlock();
     }
+  
+    addSoftwareModuleBtn.addEventListener('click', () => createSoftwareModuleBlock());
+  
+    addCertForm.addEventListener('submit', function(event) {
+        event.preventDefault();
+  
+        const allGrantedSoftwareModules = [];
+  
+        softwareModulesContainer.querySelectorAll('.p-3.border.border-gray-200').forEach((block) => {
+            const softwareSelect = block.querySelector(`select[name^="software_select_"]`);
+            if (!softwareSelect || !softwareSelect.value) return; // Skip if select is missing or empty
+  
+            const selectedSoftwareId = softwareSelect.value;
+            const selectedModulesInBlock = [];
+  
+            block.querySelectorAll(`input[name^="selected_modules_"]:checked`).forEach(checkbox => {
+                const moduleId = parseInt(checkbox.value);
+                const moduleName = checkbox.nextElementSibling.textContent;
+                const softwareName = allSoftwareAppsGlobal.find(app => app.id == parseInt(selectedSoftwareId))?.name || '';
+                selectedModulesInBlock.push({
+                    module_id: moduleId,
+                    module_name: moduleName,
+                    software_name: softwareName
+                });
+            });
+  
+            allGrantedSoftwareModules.push(...selectedModulesInBlock);
+        });
+  
+        if (allGrantedSoftwareModules.length === 0) {
+            alert("Please select at least one software and one module before submitting.");
+            return;
+        }
+  
+        let hiddenInput = document.getElementById('granted_software_modules_input');
+        if (!hiddenInput) {
+            hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.name = 'selected_modules';
+            hiddenInput.id = 'granted_software_modules_input';
+            addCertForm.appendChild(hiddenInput);
+        }
+  
+        hiddenInput.value = JSON.stringify(allGrantedSoftwareModules);
+        addCertForm.submit();
+    });
+  
+    const addCertModal = document.getElementById('addCertModal');
+    addCertModal.addEventListener('transitionend', function() {
+        if (!addCertModal.classList.contains('hidden')) {
+            if (softwareModulesContainer.children.length === 0) {
+                createSoftwareModuleBlock();
+            }
+        }
+    });
   });
-  observer.observe(addCertModal, { attributes: true });
-}
-});
-</script>
+  </script>
+  
