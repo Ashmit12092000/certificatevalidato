@@ -1029,8 +1029,23 @@ def add_certificate():
             json.dumps(granted_software_modules)
         ))
 
+        # --- START OF CRUCIAL LOGIC ADDED/RE-ADDED ---
+        # After adding a new certificate, revert customer status to Pending to trigger re-approval workflow
+        # and clear existing role reports.
+        customer_db_record = conn.execute("SELECT status FROM customers WHERE id = ?", (customer_id,)).fetchone()
+        # If the customer's current status is NOT 'Pending', reset it to 'Pending'
+        if customer_db_record and customer_db_record['status'] != 'Pending':
+            conn.execute("UPDATE customers SET status = 'Pending' WHERE id = ?", (customer_id,))
+            conn.execute("DELETE FROM role_reports WHERE customer_id = ?", (customer_id,))
+            flash("New certificate added. Customer status reset to Pending for re-approval workflow.", "success")
+        else:
+            # If customer was already Pending (e.g., first certificate for a new customer), just confirm addition
+            flash("Certificate added successfully! It requires approval.", "success")
+        # --- END OF CRUCIAL LOGIC ADDED/RE-ADDED ---
+
         conn.commit()
-        flash("Certificate added successfully! It requires approval.", "success")
+        # The flash message is now handled by the logic above, so this one can be removed or kept as a fallback
+        # flash("Certificate added successfully! It requires approval.", "success") # This line might be redundant now
 
     except Exception as e:
         print(f"Error adding certificate: {e}")
