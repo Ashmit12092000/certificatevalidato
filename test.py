@@ -1,6 +1,6 @@
 import os
 import sqlite3
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, Response
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, Response,send_file
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 import re
@@ -9,14 +9,13 @@ import csv
 import random
 import string
 import json
-
 from dateutil.relativedelta import relativedelta
 
 # --- App Initialization ---
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
 
-DATABASE = 'database.db'
+DATABASE = 'databas.db'
 SUPERVISOR_EMAIL = "supervisor@gmail.com"
 ADMIN_HOD_EMAIL = "admin@gmail.com"
 
@@ -44,7 +43,7 @@ def init_db():
             name TEXT,
             email TEXT UNIQUE,
             password TEXT,
-            role TEXT
+            role TEXT -- 'operator', 'supervisor', 'admin_hod'
         )''')
 
         cur.execute('''CREATE TABLE IF NOT EXISTS customers (
@@ -97,6 +96,7 @@ def init_db():
             approved_roles TEXT,
             rejected_roles TEXT,
             approver_notes TEXT,
+            final_approver_notes TEXT, 
             FOREIGN KEY(customer_id) REFERENCES customers(id)
         )''')
         conn.commit()
@@ -112,6 +112,121 @@ def get_db_connection():
 @app.route('/')
 def index():
     return redirect(url_for('login'))
+# Add this GET route to your main.py
+@app.route('/edit-customer-certificates/<int:customer_id>', methods=["GET"])
+def edit_customer_certificates(customer_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    # Only Supervisor and Admin (HOD) can access this page
+    if session.get("role") not in ["supervisor", "admin_hod"]:
+        flash("Unauthorized to edit customer certificates.", "error")
+        return redirect(url_for('dashboard'))
+
+    conn = get_db_connection()
+    customer = conn.execute("SELECT * FROM customers WHERE id = ?", (customer_id,)).fetchone()
+    
+    if not customer:
+        flash("Customer not found.", "error")
+        conn.close()
+        return redirect(url_for('manage_customers'))
+
+    # Fetch all certificates for this customer, including those that are rejected
+    certificates_raw = conn.execute("""
+        SELECT * FROM certificates WHERE customer_id = ? ORDER BY cert_type ASC
+    """, (customer_id,)).fetchall()
+    # Convert Row objects to dicts for JSON serialization in template
+    certificates = [dict(row) for row in certificates_raw]
+
+
+    # Fetch all master data needed for dropdowns in the form
+    cert_types_query = conn.execute("SELECT name FROM certificate_types ORDER BY name ASC").fetchall()
+    cert_types = [ct[0] for ct in cert_types_query]
+
+    all_software_apps = conn.execute("SELECT * FROM software_applications ORDER BY name").fetchall()
+    all_software_modules = conn.execute("SELECT * FROM software_modules ORDER BY software_id, name").fetchall()
+    
+    software_apps_list = [dict(row) for row in all_software_apps]
+    software_modules_list = [dict(row) for row in all_software_modules]
+    
+    all_software_apps_json = json.dumps(software_apps_list)
+    all_software_modules_json = json.dumps(software_modules_list)
+
+    conn.close()
+
+    return render_template("edit_customer_certificates.html", 
+                           customer=customer, 
+                           certificates=certificates, # Pass as list of dicts
+                           cert_types=cert_types,
+                           all_software_apps=software_apps_list, # Pass as list of dicts
+                           all_software_modules_json=all_software_modules_json, # Pass as JSON string
+                           role=session.get("role")
+                           )
+
+@app.route('/update-customer-certificates/<int:customer_id>', methods=["POST"])
+def update_customer_certificates(customer_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    # Only Supervisor and Admin (HOD) can update customer certificates
+    if session.get("role") not in ["supervisor", "admin_hod"]:
+        flash("Unauthorized to update customer certificates.", "error")
+        return redirect(url_for('dashboard'))
+
+    conn = get_db_connection()
+    try:
+        customer = conn.execute("SELECT * FROM customers WHERE id = ?", (customer_id,)).fetchone()
+        if not customer:
+            flash("Customer not found.", "error")
+            return redirect(url_for('manage_customers'))
+
+        # Parse the JSON string containing all certificate data from the form
+        certificates_data_json = request.form.get('certificates_data')
+        print("certificates_data_json: "+str(certificates_data_json))
+        if not certificates_data_json:
+            flash("No certificate data received for update.", "error")
+            return redirect(url_for('edit_customer_certificates', customer_id=customer_id))
+        
+        updated_certificates = json.loads(certificates_data_json)
+
+        for cert_data in updated_certificates:
+            cert_id = cert_data['id']
+            cert_type = cert_data['cert_type']
+            activation_date = cert_data['activation_date']
+            expiration_date = cert_data['expiration_date']
+            granted_software_modules = cert_data['granted_software_modules'] # Already JSON stringified from JS
+
+            # Calculate new status based on dates
+            act_date_obj = datetime.strptime(activation_date, "%Y-%m-%d")
+            exp_date_obj = datetime.strptime(expiration_date, "%Y-%m-%d")
+            today = datetime.today().date()
+            new_status = "Expired" if exp_date_obj.date() < today else "Active"
+
+            conn.execute("""
+                UPDATE certificates SET 
+                    cert_type = ?,
+                    activation_date = ?, 
+                    expiration_date = ?, 
+                    status = ?,
+                    verified = 0, -- Reset verified status to 0
+                    granted_software_modules = ?
+                WHERE id = ?
+            """, (cert_type, activation_date, expiration_date, new_status, granted_software_modules, cert_id))
+        
+        # Reset customer status to Pending and delete old role reports
+        conn.execute("UPDATE customers SET status = 'Pending' WHERE id = ?", (customer_id,))
+        conn.execute("DELETE FROM role_reports WHERE customer_id = ?", (customer_id,))
+
+        conn.commit()
+        flash(f"Certificates for {customer['name']} updated successfully! Workflow re-enabled for approval.", "success")
+
+    except Exception as e:
+        print(f"Error updating customer certificates for customer_id {customer_id}: {e}")
+        flash(f"Error updating customer certificates: {e}", "error")
+    finally:
+        conn.close()
+    
+    return redirect(url_for('manage_customers')) # Redirect to manage customers after re-submission
 
 @app.route('/login', methods=["GET", "POST"])
 def login():
@@ -173,11 +288,24 @@ def dashboard():
     conn = get_db_connection()
 
     certificates_raw = conn.execute("""
-        SELECT cert.*, customers.name as customer_name
+        SELECT
+            cert.*,
+            customers.name as customer_name,
+            latest_report.final_approver_notes as final_approver_notes_from_report -- Fetch the new column
         FROM certificates cert
         JOIN customers ON cert.customer_id = customers.id
+        LEFT JOIN (
+            SELECT
+                customer_id,
+                final_approver_notes,
+                MAX(generated_date) as latest_generated_date
+            FROM role_reports
+            WHERE status = 'Completed'
+            GROUP BY customer_id
+        ) AS latest_report ON customers.id = latest_report.customer_id
         ORDER BY cert.id DESC
     """).fetchall()
+    certificates_data_for_js = [dict(row) for row in certificates_raw]
     certificates_data_for_js = [dict(row) for row in certificates_raw]
 
 
@@ -212,7 +340,37 @@ def dashboard():
                            all_software_apps=software_apps_list,
                            all_software_modules_json=all_software_modules_json,
                            role=session.get("role"))
+@app.route('/print-all-customers')
+def print_all_customers():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
 
+    if session.get("role") not in ["supervisor", "admin_hod"]:
+        flash("Unauthorized to print comprehensive customer report.", "error")
+        return redirect(url_for('manage_customers'))
+
+    conn = get_db_connection()
+    customers_raw = conn.execute("SELECT * FROM customers ORDER BY name ASC").fetchall()
+    certificates_raw = conn.execute("SELECT * FROM certificates ORDER BY customer_id, cert_type ASC").fetchall()
+    conn.close()
+
+    customers_data = []
+    customer_certs_map = {}
+    for cert in certificates_raw:
+        customer_certs_map.setdefault(cert['customer_id'], []).append(dict(cert))
+
+    for cust in customers_raw:
+        cust_dict = dict(cust)
+        cust_dict['certificates'] = customer_certs_map.get(cust['id'], [])
+        customers_data.append(cust_dict)
+
+    user_email = session.get('user_email')
+    user_role = session.get('role')
+
+    return render_template("print_all_customers.html",
+                           all_customers=customers_data,
+                           user_email=user_email,
+                           user_role=user_role)
 @app.route('/import-csv', methods=['POST'])
 def import_csv():
     if 'user_id' not in session:
@@ -337,18 +495,85 @@ def manage_customers():
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
-    conn = get_db_connection()
-    customers = conn.execute("SELECT * FROM customers ORDER BY name ASC").fetchall()
-    conn.close()
-    return render_template("manage_customers.html", customers=customers, role=session.get("role"))
+    # Filtering parameters
+    name_filter = request.args.get('name_filter', '').strip().lower()
+    email_filter = request.args.get('email_filter', '').strip().lower()
+    gst_filter = request.args.get('gst_filter', '').strip().lower()
 
+    # Sorting parameters
+    sort_by = request.args.get('sort_by', 'name') # Default sort by name
+    order_by = request.args.get('order_by', 'ASC') # Default order ASC
+
+    valid_sort_columns = {
+        'code': 'code',
+        'name': 'name',
+        'status': 'status'
+    }
+
+    sort_column = valid_sort_columns.get(sort_by, 'name')
+    if order_by.upper() not in ['ASC', 'DESC']:
+        order_by = 'ASC'
+
+    conn = get_db_connection()
+
+    # SQL query to fetch customers along with their total certificate count
+    query = """
+        SELECT
+            c.*,
+            (SELECT COUNT(*) FROM certificates WHERE customer_id = c.id) as total_certs,
+            latest_report.final_approver_notes AS final_approver_notes_from_report
+        FROM customers c
+        LEFT JOIN (
+            SELECT
+                customer_id,
+                final_approver_notes,
+                MAX(generated_date) as latest_generated_date
+            FROM role_reports
+            WHERE status = 'Completed'
+            GROUP BY customer_id
+        ) AS latest_report ON c.id = latest_report.customer_id
+    """
+    filters = []
+    params = []
+
+    if name_filter:
+        filters.append("LOWER(c.name) LIKE ?")
+        params.append(f"%{name_filter}%")
+    # Keep these filters in the backend query even if not displayed in UI,
+    # in case they are used for advanced search/reporting later.
+    if email_filter:
+        filters.append("LOWER(c.email) LIKE ?")
+        params.append(f"%{email_filter}%")
+    if gst_filter:
+        filters.append("LOWER(c.gst) LIKE ?")
+        params.append(f"%{gst_filter}%")
+
+    if filters:
+        query += " WHERE " + " AND ".join(filters)
+
+    query += f" ORDER BY {sort_column} {order_by}"
+
+    customers = conn.execute(query, params).fetchall()
+    conn.close()
+
+    return render_template("manage_customers.html",
+                           customers=customers,
+                           role=session.get("role"),
+                           current_sort_by=sort_by,
+                           current_order_by=order_by,
+                           name_filter_val=name_filter,
+                           email_filter_val=email_filter,
+                           gst_filter_val=gst_filter,
+                           request=request
+                          )
 @app.route('/customer-details/<int:customer_id>')
 def customer_details(customer_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
     conn = get_db_connection()
-    customer = conn.execute("SELECT * FROM customers WHERE id = ?", (customer_id,)).fetchone()
+    # Updated SQL query to include total_certs count for the specific customer
+    customer = conn.execute("SELECT *, (SELECT COUNT(*) FROM certificates WHERE customer_id = customers.id) as total_certs FROM customers WHERE id = ?", (customer_id,)).fetchone()
     
     if not customer:
         flash("Customer not found.", "error")
@@ -365,13 +590,11 @@ def customer_details(customer_id):
         ORDER BY generated_date DESC LIMIT 1
     """, (customer_id,)).fetchone()
     
-    # Ensure latest_report is a dictionary or None, not a Row object if empty
     if latest_report:
         latest_report = dict(latest_report)
     else:
-        latest_report = None # Explicitly set to None if no report found
+        latest_report = None
 
-    # Fetch all software and modules for the add certificate modal (needed if modal is included here)
     all_software_apps = conn.execute("SELECT * FROM software_applications ORDER BY name").fetchall()
     all_software_modules = conn.execute("SELECT * FROM software_modules ORDER BY software_id, name").fetchall()
     
@@ -387,12 +610,67 @@ def customer_details(customer_id):
     return render_template("customer_details.html", 
                            customer=customer, 
                            certificates=certificates,
-                           latest_report=latest_report, # Pass the potentially None or dict latest_report
+                           latest_report=latest_report,
                            role=session.get("role"),
-                           all_software_apps=software_apps_list, # Pass for modal
-                           all_software_modules_json=all_software_modules_json # Pass for modal
+                           all_software_apps=software_apps_list,
+                           all_software_modules_json=all_software_modules_json
                            )
+@app.route('/customer-details/<int:customer_id>/pdf')
+def generate_customer_pdf(customer_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
 
+    if session.get("role") not in ["supervisor", "admin_hod"]:
+        flash("Unauthorized to generate PDF report.", "error")
+        return redirect(url_for('customer_details', customer_id=customer_id))
+
+    conn = get_db_connection()
+    customer = conn.execute("SELECT * FROM customers WHERE id = ?", (customer_id,)).fetchone()
+    if not customer:
+        flash("Customer not found.", "error")
+        conn.close()
+        return redirect(url_for('manage_customers'))
+
+    certificates_raw = conn.execute("""
+        SELECT * FROM certificates WHERE customer_id = ? ORDER BY cert_type ASC
+    """, (customer_id,)).fetchall()
+    certificates = [dict(row) for row in certificates_raw]
+
+    # These lists are not strictly necessary for rendering granted_software_modules in PDF
+    # because granted_software_modules already contains software_name and module_name.
+    # However, they are passed for consistency with customer_details route context.
+    all_software_apps = conn.execute("SELECT * FROM software_applications ORDER BY name").fetchall()
+    all_software_modules = conn.execute("SELECT * FROM software_modules ORDER BY software_id, name").fetchall()
+    
+    software_apps_list = [dict(row) for row in all_software_apps]
+    software_modules_list = [dict(row) for row in all_software_modules]
+
+    conn.close()
+
+    # Render HTML to a string using a dedicated PDF template
+    rendered_html = render_template('pdf_customer_details.html',
+                                    customer=customer,
+                                    certificates=certificates,
+                                    # Pass necessary data for granted_software_modules parsing if needed by from_json filter
+                                    # all_software_apps=software_apps_list, # Not strictly used in PDF template for granted_software_modules display
+                                    # all_software_modules_json=json.dumps(software_modules_list), # Not strictly used in PDF template for granted_software_modules display
+                                    user_email=session.get('user_email'),
+                                    current_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                   )
+
+    # Create PDF
+    pdf = pisa.CreatePDF(
+        rendered_html,
+        dest=None # file handle or path to write to, None to return StringIO
+    )
+
+    if not pdf.err:
+        # Return the PDF as a file download
+        return Response(pdf.dest.getvalue(), mimetype='application/pdf',
+                        headers={'Content-Disposition': f'attachment;filename={customer["name"].replace(" ", "_")}_details.pdf'})
+    
+    flash("Error generating PDF.", "error")
+    return redirect(url_for('customer_details', customer_id=customer_id))
 @app.route('/update-customer/<int:customer_id>', methods=["POST"])
 def update_customer(customer_id):
     if 'user_id' not in session:
@@ -460,7 +738,7 @@ def manage_certificates():
     combined = manual_types + [r for r in auto_types if r['name'] not in [m['name'] for m in manual_types]]
     return render_template("manage_certificates.html", cert_types=combined)
 
-@app.route('/add-cert-type', methods=['POST'])
+@app.route('/add-cert-type', methods=["POST"])
 def add_certificate_type():
     if 'user_id' not in session:
         return redirect(url_for('login'))
@@ -520,10 +798,23 @@ def report():
     name_filter = request.args.get('name', '').strip().lower()
     status_filter = request.args.get('status', '')
     type_filter = request.args.get('type', '')
+    sort_by = request.args.get('sort_by', 'c.name')
+    order_by = request.args.get('order_by', 'ASC')
+
+    valid_sort_columns = {
+        'customer_id': 'c.id',
+        'customer_name': 'c.name',
+        'cert_type': 'cert.cert_type',
+        'expiration_date': 'cert.expiration_date'
+    }
+    # Fallback to c.name if invalid
+    sort_column = valid_sort_columns.get(sort_by, 'c.name')
+    if order_by.upper() not in ['ASC', 'DESC']:
+        order_by = 'ASC'
 
     conn = get_db_connection()
 
-    query = '''
+    query = f'''
         SELECT c.id AS customer_id, c.name AS customer_name, c.code AS customer_code,
                cert.cert_type, cert.status,
                cert.activation_date, cert.expiration_date,
@@ -532,6 +823,7 @@ def report():
         FROM certificates cert
         JOIN customers c ON cert.customer_id = c.id
     '''
+
     filters = []
     params = []
 
@@ -548,14 +840,19 @@ def report():
     if filters:
         query += " WHERE " + " AND ".join(filters)
 
-    query += " ORDER BY c.name ASC, cert.cert_type ASC"
+    query += f" ORDER BY {sort_column} {order_by}"
 
     report = conn.execute(query, params).fetchall()
-
     cert_types = [row["cert_type"] for row in conn.execute("SELECT DISTINCT cert_type FROM certificates").fetchall()]
     conn.close()
 
-    return render_template("report.html", report=report, cert_types=cert_types)
+    return render_template("report.html", 
+        report=report, 
+        cert_types=cert_types,
+        current_sort_by=sort_by,
+        current_order_by=order_by,
+        request=request
+    )
 
 @app.route('/download-report')
 def download_report():
@@ -649,7 +946,7 @@ def add_customer():
 def add_certificate():
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    
+
     if session.get("role") not in ["supervisor", "admin_hod"]:
         flash("Unauthorized to add certificates. Only Supervisor or Admin (HOD) can add certificates.", "error")
         return redirect(url_for('dashboard'))
@@ -658,41 +955,40 @@ def add_certificate():
     cert_type = request.form.get("cert_type", "").strip()
     expiration_date = request.form.get("expiration_date")
     activation_date = request.form.get("activation_date")
-    
-    selected_module_ids = request.form.getlist('selected_modules')
+
+    # This is the JSON string of module data from hidden input
+    selected_modules_raw = request.form.get("selected_modules")
     granted_software_modules = []
-    
+    selected_module_ids = []
+
+    # Parse the JSON safely
+    if selected_modules_raw:
+        try:
+            selected_module_data = json.loads(selected_modules_raw)
+            granted_software_modules = selected_module_data
+            selected_module_ids = [str(mod['module_id']) for mod in selected_module_data]
+        except json.JSONDecodeError:
+            flash("Failed to decode selected software/module data.", "error")
+            return redirect(url_for('dashboard'))
+
     conn = get_db_connection()
     try:
-        if selected_module_ids:
-            placeholders = ','.join('?' * len(selected_module_ids))
-            modules_data = conn.execute(f"""
-                SELECT sm.id, sm.name as module_name, sa.name as software_name
-                FROM software_modules sm
-                JOIN software_applications sa ON sm.software_id = sa.id
-                WHERE sm.id IN ({placeholders})
-            """, selected_module_ids).fetchall()
-            
-            for row in modules_data:
-                granted_software_modules.append({
-                    'module_id': row['id'],
-                    'module_name': row['module_name'],
-                    'software_name': row['software_name']
-                })
-
+        # Validate required fields
         if not customer_id or not cert_type or not expiration_date or not activation_date:
             flash("All fields are required to add a certificate.", "error")
             return redirect(url_for('dashboard'))
-        
-        exp_date = datetime.strptime(expiration_date, "%Y-%m-%d")
+
         act_date = datetime.strptime(activation_date, "%Y-%m-%d")
+        exp_date = datetime.strptime(expiration_date, "%Y-%m-%d")
+        today = datetime.today().date()
+
         if act_date > exp_date:
             flash("Activation date cannot be later than Expiration date.", "error")
             return redirect(url_for('dashboard'))
-        today = datetime.today().date()
 
         status = "Expired" if exp_date.date() < today else "Active"
 
+        # Check duplicate certificate
         duplicate = conn.execute("""
             SELECT 1 FROM certificates
             WHERE customer_id = ? AND cert_type = ?
@@ -702,8 +998,27 @@ def add_certificate():
             flash("This certificate already exists for the customer.", "error")
             return redirect(url_for('dashboard'))
 
+        # Optional: Validate module IDs from DB (not strictly necessary if frontend is trusted)
+        if selected_module_ids:
+            placeholders = ','.join(['?'] * len(selected_module_ids))
+            modules_data = conn.execute(f"""
+                SELECT sm.id, sm.name as module_name, sa.name as software_name
+                FROM software_modules sm
+                JOIN software_applications sa ON sm.software_id = sa.id
+                WHERE sm.id IN ({placeholders})
+            """, selected_module_ids).fetchall()
+
+            if len(modules_data) != len(selected_module_ids):
+                flash("Some selected modules are invalid or missing.", "error")
+                return redirect(url_for('dashboard'))
+
+        # Insert certificate with granted software/module data
         conn.execute("""
-            INSERT INTO certificates (customer_id, cert_type, status, activation_date, expiration_date, verified, granted_software_modules)
+            INSERT INTO certificates (
+                customer_id, cert_type, status,
+                activation_date, expiration_date,
+                verified, granted_software_modules
+            )
             VALUES (?, ?, ?, ?, ?, 0, ?)
         """, (
             customer_id,
@@ -713,8 +1028,24 @@ def add_certificate():
             exp_date.strftime("%Y-%m-%d"),
             json.dumps(granted_software_modules)
         ))
+
+        # --- START OF CRUCIAL LOGIC ADDED/RE-ADDED ---
+        # After adding a new certificate, revert customer status to Pending to trigger re-approval workflow
+        # and clear existing role reports.
+        customer_db_record = conn.execute("SELECT status FROM customers WHERE id = ?", (customer_id,)).fetchone()
+        # If the customer's current status is NOT 'Pending', reset it to 'Pending'
+        if customer_db_record and customer_db_record['status'] != 'Pending':
+            conn.execute("UPDATE customers SET status = 'Pending' WHERE id = ?", (customer_id,))
+            conn.execute("DELETE FROM role_reports WHERE customer_id = ?", (customer_id,))
+            flash("New certificate added. Customer status reset to Pending for re-approval workflow.", "success")
+        else:
+            # If customer was already Pending (e.g., first certificate for a new customer), just confirm addition
+            flash("Certificate added successfully! It requires approval.", "success")
+        # --- END OF CRUCIAL LOGIC ADDED/RE-ADDED ---
+
         conn.commit()
-        flash("Certificate added successfully! It requires approval.", "success")
+        # The flash message is now handled by the logic above, so this one can be removed or kept as a fallback
+        # flash("Certificate added successfully! It requires approval.", "success") # This line might be redundant now
 
     except Exception as e:
         print(f"Error adding certificate: {e}")
@@ -764,11 +1095,21 @@ def update_certificate_dates(cert_id):
             UPDATE certificates SET 
                 activation_date = ?, 
                 expiration_date = ?, 
-                status = ?
+                status = ?,
+                verified = 0 -- Reset verified status to 0
             WHERE id = ?
         """, (activation_date, expiration_date, new_status, cert_id))
+        
+        # Also reset customer status to Pending if it was Verified or Rejected
+        customer_id = cert['customer_id']
+        customer = conn.execute("SELECT status FROM customers WHERE id = ?", (customer_id,)).fetchone()
+        if customer and customer['status'] in ['Verified', 'Rejected']:
+            conn.execute("UPDATE customers SET status = 'Pending' WHERE id = ?", (customer_id,))
+            # Delete any existing role reports for this customer to clear the old workflow instance
+            conn.execute("DELETE FROM role_reports WHERE customer_id = ?", (customer_id,))
+
         conn.commit()
-        flash("Certificate dates updated successfully!", "success")
+        flash("Certificate dates updated successfully! Workflow re-enabled for approval.", "success")
 
     except Exception as e:
         print(f"Error updating certificate dates for cert_id {cert_id}: {e}")
@@ -993,6 +1334,7 @@ def final_confirm_sso(report_id):
     if session.get("role") != "admin_hod": # Changed to admin_hod only
         flash("Unauthorized for final SSO confirmation.", "error")
         return redirect(url_for('approval_queue'))
+    final_approver_notes = request.form.get('final_approver_notes', '').strip()
 
     conn = get_db_connection()
     try:
@@ -1024,8 +1366,8 @@ def final_confirm_sso(report_id):
             """, (customer_id, cert_type))
 
         conn.execute("UPDATE customers SET status = ? WHERE id = ?", ('Verified', customer_id))
-        conn.execute("UPDATE role_reports SET status = ? WHERE id = ?", ('Completed', report_id))
-        
+        conn.execute("UPDATE role_reports SET status = ?, final_approver_notes = ? WHERE id = ?", ('Completed', final_approver_notes, report_id))
+    
         conn.commit()
         flash(f"Final SSO confirmation for {customer_name} completed. Customer is now Verified!", "success")
 
@@ -1088,8 +1430,7 @@ def delete_customer(id):
     except Exception as e:
         flash(f"Error deleting customer: {e}", "error")
 
-    return redirect(url_for('manage_customers'))
-
+    return redirect(url_for('dashboard'))
 
 @app.route('/logout')
 def logout():
