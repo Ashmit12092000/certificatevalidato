@@ -92,9 +92,7 @@
             {% if latest_report.approver_notes %}
               <p class="text-sm text-gray-600 mt-1 italic">Notes: "{{ latest_report.approver_notes }}"</p>
             {% endif %}
-            {% if latest_report.final_approver_notes %} {# New: Display Final Approver Notes #}
-              <p class="text-sm text-red-600 mt-1 bold">Remarks : "{{ latest_report.final_approver_notes }}"</p>
-            {% endif %}
+            
           </div>
           {% endif %}
         </div>
@@ -189,7 +187,7 @@
                 {% endif %}
               </p>
 {% if latest_report and latest_report.final_approver_notes %}
-                <p class="text-sm text-gray-600 mt-2 italic">Notes: "{{ latest_report.final_approver_notes }}"</p>
+                <p class="text-sm text-red-600 mt-2 Bold">Final notes: "{{ latest_report.final_approver_notes }}"</p>
               {% endif %}
               {% if cert.granted_software_modules %}
                 <h4 class="text-sm font-semibold text-gray-700 mt-3 mb-1">Granted Software/Modules:</h4>
