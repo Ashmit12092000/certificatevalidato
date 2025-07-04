@@ -620,62 +620,7 @@ def customer_details(customer_id):
                            all_software_apps=software_apps_list,
                            all_software_modules_json=all_software_modules_json
                            )
-@app.route('/customer-details/<int:customer_id>/pdf')
-def generate_customer_pdf(customer_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
 
-    if session.get("role") not in ["supervisor", "admin_hod"]:
-        flash("Unauthorized to generate PDF report.", "error")
-        return redirect(url_for('customer_details', customer_id=customer_id))
-
-    conn = get_db_connection()
-    customer = conn.execute("SELECT * FROM customers WHERE id = ?", (customer_id,)).fetchone()
-    if not customer:
-        flash("Customer not found.", "error")
-        conn.close()
-        return redirect(url_for('manage_customers'))
-
-    certificates_raw = conn.execute("""
-        SELECT * FROM certificates WHERE customer_id = ? ORDER BY cert_type ASC
-    """, (customer_id,)).fetchall()
-    certificates = [dict(row) for row in certificates_raw]
-
-    # These lists are not strictly necessary for rendering granted_software_modules in PDF
-    # because granted_software_modules already contains software_name and module_name.
-    # However, they are passed for consistency with customer_details route context.
-    all_software_apps = conn.execute("SELECT * FROM software_applications ORDER BY name").fetchall()
-    all_software_modules = conn.execute("SELECT * FROM software_modules ORDER BY software_id, name").fetchall()
-    
-    software_apps_list = [dict(row) for row in all_software_apps]
-    software_modules_list = [dict(row) for row in all_software_modules]
-
-    conn.close()
-
-    # Render HTML to a string using a dedicated PDF template
-    rendered_html = render_template('pdf_customer_details.html',
-                                    customer=customer,
-                                    certificates=certificates,
-                                    # Pass necessary data for granted_software_modules parsing if needed by from_json filter
-                                    # all_software_apps=software_apps_list, # Not strictly used in PDF template for granted_software_modules display
-                                    # all_software_modules_json=json.dumps(software_modules_list), # Not strictly used in PDF template for granted_software_modules display
-                                    user_email=session.get('user_email'),
-                                    current_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                   )
-
-    # Create PDF
-    pdf = pisa.CreatePDF(
-        rendered_html,
-        dest=None # file handle or path to write to, None to return StringIO
-    )
-
-    if not pdf.err:
-        # Return the PDF as a file download
-        return Response(pdf.dest.getvalue(), mimetype='application/pdf',
-                        headers={'Content-Disposition': f'attachment;filename={customer["name"].replace(" ", "_")}_details.pdf'})
-    
-    flash("Error generating PDF.", "error")
-    return redirect(url_for('customer_details', customer_id=customer_id))
 @app.route('/update-customer/<int:customer_id>', methods=["POST"])
 def update_customer(customer_id):
     if 'user_id' not in session:
@@ -725,7 +670,36 @@ def update_customer(customer_id):
         conn.close()
     return redirect(url_for('customer_details', customer_id=customer_id))
 
+@app.route('/customer-details/<int:customer_id>/print') # Changed path from /pdf to /print
+def print_customer_html_report(customer_id): # Renamed function for clarity
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
 
+    if session.get("role") not in ["supervisor", "admin_hod"]:
+        flash("Unauthorized to generate HTML report.", "error")
+        return redirect(url_for('customer_details', customer_id=customer_id))
+
+    conn = get_db_connection()
+    customer = conn.execute("SELECT * FROM customers WHERE id = ?", (customer_id,)).fetchone()
+    if not customer:
+        flash("Customer not found.", "error")
+        conn.close()
+        return redirect(url_for('manage_customers'))
+
+    certificates_raw = conn.execute("""
+        SELECT *, COALESCE(final_notes, '') as final_notes FROM certificates WHERE customer_id = ? ORDER BY cert_type ASC
+    """, (customer_id,)).fetchall()
+    certificates = [dict(row) for row in certificates_raw]
+
+    conn.close()
+
+    # Render HTML template directly
+    return render_template('print_customer_details.html',
+                           customer=customer,
+                           certificates=certificates,
+                           user_email=session.get('user_email'),
+                           user_role=session.get('role'),
+                           current_date=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 @app.route('/manage-certificates')
 def manage_certificates():
     if 'user_id' not in session:
