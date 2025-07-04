@@ -67,6 +67,7 @@ def init_db():
             expiration_date TEXT,
             verified INTEGER DEFAULT 0,
             granted_software_modules TEXT,
+            final_notes TEXT DEFAULT '',
             FOREIGN KEY(customer_id) REFERENCES customers(id)
         )''')
 
@@ -289,20 +290,20 @@ def dashboard():
 
     certificates_raw = conn.execute("""
         SELECT
-            cert.*,
-            customers.name as customer_name,
-            latest_report.final_approver_notes as final_approver_notes_from_report -- Fetch the new column
+            cert.id,
+            cert.customer_id,
+            cert.cert_type,
+            cert.status,
+            cert.activation_date,
+            cert.expiration_date,
+            cert.verified,
+            COALESCE(cert.granted_software_modules, '[]') as granted_software_modules,
+            COALESCE(cert.final_notes, '') as final_notes, -- Select final_notes directly from certificates table
+            customers.name as customer_name
+            -- Removed latest_report.final_approver_notes as final_approver_notes_from_report as it's no longer used per-certificate
         FROM certificates cert
         JOIN customers ON cert.customer_id = customers.id
-        LEFT JOIN (
-            SELECT
-                customer_id,
-                final_approver_notes,
-                MAX(generated_date) as latest_generated_date
-            FROM role_reports
-            WHERE status = 'Completed'
-            GROUP BY customer_id
-        ) AS latest_report ON customers.id = latest_report.customer_id
+        -- Removed LEFT JOIN to role_reports if final_approver_notes_from_report is not used per certificate
         ORDER BY cert.id DESC
     """).fetchall()
     certificates_data_for_js = [dict(row) for row in certificates_raw]
@@ -351,7 +352,9 @@ def print_all_customers():
 
     conn = get_db_connection()
     customers_raw = conn.execute("SELECT * FROM customers ORDER BY name ASC").fetchall()
-    certificates_raw = conn.execute("SELECT * FROM certificates ORDER BY customer_id, cert_type ASC").fetchall()
+    certificates_raw = conn.execute("""
+        SELECT *, COALESCE(final_notes, '') as final_notes FROM certificates ORDER BY customer_id, cert_type ASC
+    """).fetchall()
     conn.close()
 
     customers_data = []
@@ -581,7 +584,7 @@ def customer_details(customer_id):
         return redirect(url_for('manage_customers'))
 
     certificates = conn.execute("""
-        SELECT * FROM certificates WHERE customer_id = ? ORDER BY cert_type ASC
+        SELECT *, COALESCE(final_notes, '') as final_notes FROM certificates WHERE customer_id = ? ORDER BY cert_type ASC
     """, (customer_id,)).fetchall()
 
     latest_report = conn.execute("""
@@ -1183,43 +1186,7 @@ def approval_queue():
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
-    if session.get("role") != "admin_hod": # Changed to admin_hod only
-        flash("Unauthorized access to approval queue.", "error")
-        return redirect(url_for('dashboard'))
-
-    conn = get_db_connection()
-    reports = conn.execute("""
-        SELECT rr.*, c.name as customer_name, c.code as customer_code
-        FROM role_reports rr
-        JOIN customers c ON rr.customer_id = c.id
-        WHERE rr.status IN ('Awaiting Approval', 'Final Approval Pending')
-        ORDER BY rr.generated_date DESC
-    """).fetchall()
-
-    reports_with_certs = []
-    for report in reports:
-        report_dict = dict(report)
-        if report['status'] == 'Awaiting Approval':
-            certs = conn.execute("""
-                SELECT cert_type, status, activation_date, expiration_date, granted_software_modules
-                FROM certificates
-                WHERE customer_id = ? AND verified = 0
-            """, (report['customer_id'],)).fetchall()
-            report_dict['certificates_for_approval'] = [dict(c) for c in certs]
-        else:
-            report_dict['certificates_for_approval'] = []
-        
-        reports_with_certs.append(report_dict)
-
-    conn.close()
-    return render_template('approval_queue.html', reports=reports_with_certs, role=session.get("role"))
-
-@app.route('/approve-reject-report/<int:report_id>', methods=["POST"])
-def approve_reject_report(report_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
-    if session.get("role") != "admin_hod": # Changed to admin_hod only
+    if session.get("role") != "admin_hod":
         flash("Unauthorized to approve/reject reports.", "error")
         return redirect(url_for('approval_queue'))
 
@@ -1237,42 +1204,78 @@ def approve_reject_report(report_id):
             return redirect(url_for('approval_queue'))
 
         customer_id = report['customer_id']
-        customer_name = report['customer_name'] 
-        approver_notes = request.form.get('approver_notes', '').strip()
+        customer_name = report['customer_name']
+        approver_notes_overall = request.form.get('approver_notes', '').strip() # Overall report notes
         
         if report['status'] != 'Awaiting Approval':
             flash("This report is not in the 'Awaiting Approval' state for certificate review.", "error")
             return redirect(url_for('approval_queue'))
 
-        approved_cert_types = request.form.getlist('approve_cert_type') 
-        rejected_cert_types = request.form.getlist('reject_cert_type') 
+        # Get lists of approved/rejected certificate IDs (from the new HTML form structure)
+        approved_cert_ids = [int(cid) for cid in request.form.getlist('approve_cert_id')]
+        rejected_cert_ids = [int(cid) for cid in request.form.getlist('reject_cert_id')]
 
-        all_certs_for_customer = conn.execute("""
-            SELECT id, cert_type FROM certificates WHERE customer_id = ? AND verified = 0
+        # Fetch all unverified certificates for this customer that are part of this report
+        all_certs_for_report = conn.execute("""
+            SELECT id, cert_type, granted_software_modules FROM certificates WHERE customer_id = ? AND verified = 0
         """, (customer_id,)).fetchall()
 
-        approved_count = 0
-        rejected_count = 0
+        approved_certs_list_for_report = [] # Will store {module_id, module_name, software_name} for approved certs
+        rejected_certs_list_for_report = [] # Will store {module_id, module_name, software_name} for rejected certs
 
-        for cert in all_certs_for_customer:
-            if cert['cert_type'] in approved_cert_types:
-                approved_count += 1
-            elif cert['cert_type'] in rejected_cert_types:
-                conn.execute("UPDATE certificates SET status = 'Rejected' WHERE id = ?", (cert['id'],)) 
-                rejected_count += 1
+        approved_certs_count = 0
+        rejected_certs_count = 0
 
-        if approved_count > 0:
-            conn.execute("UPDATE customers SET status = ? WHERE id = ?", ('SSO Setup Pending', customer_id))
-            conn.execute("UPDATE role_reports SET status = ?, approved_roles = ?, rejected_roles = ?, approver_notes = ? WHERE id = ?", 
-                         ('SSO Setup Pending', json.dumps(approved_cert_types), json.dumps(rejected_cert_types), approver_notes, report_id))
-            flash(f"Role Report for {customer_name} initially approved! Status changed to 'SSO Setup Pending'.", "success")
+        # Process each certificate from the report to update its status and notes
+        for cert in all_certs_for_report:
+            cert_id = cert['id']
+            # Get the note for this specific certificate from the form field name 'cert_final_notes_{cert.id}'
+            cert_note = request.form.get(f'cert_final_notes_{cert_id}', '').strip()
+
+            if cert_id in approved_cert_ids:
+                # Update status to Active, set verified to 1, and save final_notes
+                conn.execute("UPDATE certificates SET verified = 1, status = 'Active', final_notes = ? WHERE id = ?", (cert_note, cert_id))
+                approved_certs_count += 1
+                # Add granted modules to the overall report's approved list
+                granted_modules_info = json.loads(cert['granted_software_modules'] or '[]')
+                approved_certs_list_for_report.extend(granted_modules_info)
+
+            elif cert_id in rejected_cert_ids:
+                # Update status to Rejected, set verified to 0, and save final_notes
+                conn.execute("UPDATE certificates SET status = 'Rejected', verified = 0, final_notes = ? WHERE id = ?", (cert_note, cert_id))
+                rejected_certs_count += 1
+                # Add granted modules to the overall report's rejected list
+                granted_modules_info = json.loads(cert['granted_software_modules'] or '[]')
+                rejected_certs_list_for_report.extend(granted_modules_info)
+            else:
+                # If a certificate was displayed but not explicitly approved or rejected,
+                # just update its final_notes if a note was provided, otherwise leave its status and verified state as is.
+                if cert_note:
+                    conn.execute("UPDATE certificates SET final_notes = ? WHERE id = ?", (cert_note, cert_id))
+
+
+        # Determine customer and report status based on approvals
+        if approved_certs_count > 0:
+            new_customer_status = 'SSO Setup Pending'
+            new_report_status = 'SSO Setup Pending'
         else:
-            conn.execute("UPDATE customers SET status = ? WHERE id = ?", ('Rejected', customer_id)) 
-            conn.execute("UPDATE role_reports SET status = ?, approved_roles = ?, rejected_roles = ?, approver_notes = ? WHERE id = ?", 
-                         ('Rejected', json.dumps(approved_cert_types), json.dumps(rejected_cert_types), approver_notes, report_id))
-            flash(f"Role Report for {customer_name} rejected. No certificates verified.", "error")
+            # If no certs are approved, the customer/report status becomes Rejected
+            new_customer_status = 'Rejected'
+            new_report_status = 'Rejected'
+        
+        # Update customer status in the customers table
+        conn.execute("UPDATE customers SET status = ? WHERE id = ?", (new_customer_status, customer_id))
+
+        # Update the role report itself (approved_roles and rejected_roles now store full details of approved/rejected certs)
+        conn.execute("UPDATE role_reports SET status = ?, approved_roles = ?, rejected_roles = ?, approver_notes = ? WHERE id = ?", 
+                     (new_report_status, json.dumps(approved_certs_list_for_report), json.dumps(rejected_certs_list_for_report), approver_notes_overall, report_id))
         
         conn.commit()
+
+        if new_customer_status == 'SSO Setup Pending':
+            flash(f"Role Report for {customer_name} initially approved! Status changed to 'SSO Setup Pending'. Approved {approved_certs_count} certs, Rejected {rejected_certs_count} certs.", "success")
+        else:
+            flash(f"Role Report for {customer_name} rejected. No certificates were approved for SSO setup. Rejected {rejected_certs_count} certs.", "error")
 
     except Exception as e:
         print(f"Error processing initial report approval for report_id {report_id}: {e}")
