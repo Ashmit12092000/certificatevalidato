@@ -196,6 +196,9 @@
                     {% endfor %}
                 </ul>
               {% endif %}
+ {% if latest_report and latest_report.final_approver_notes %}
+                <p class="text-sm text-gray-600 mt-2 italic">Notes: "{{ latest_report.final_approver_notes }}"</p>
+              {% endif %}
               {# New: Modify Dates Button for Supervisor and Admin (HOD) #}
               {% if session.role == 'supervisor' or session.role == 'admin_hod' %}
                 <button onclick="openEditCertDatesModal('{{ cert.id }}', '{{ cert.activation_date }}', '{{ cert.expiration_date }}')"
