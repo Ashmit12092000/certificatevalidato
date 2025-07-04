@@ -5,7 +5,6 @@
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
-  <!-- Title & Actions -->
   <div class="flex flex-col sm:flex-row justify-between items-center mb-8 bg-white p-6 rounded-xl shadow-md">
     <h1 class="text-3xl font-extrabold text-gray-900 mb-4 sm:mb-0">Overview Dashboard</h1>
     <div class="flex flex-wrap justify-center sm:justify-end gap-3">
@@ -17,7 +16,7 @@
           Add Customer
         </button>
       {% endif %}
-     
+
       {# Add Certificate button visible to Supervisor and Admin (HOD) #}
       {% if role == 'supervisor' or role == 'admin_hod' %}
         <button onclick="document.getElementById('addCertModal').classList.remove('hidden')"
@@ -54,7 +53,7 @@
       </div>
     {% endif %}
   {% endwith %}
-      
+
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
     {% for cert in certificates %}
       <div class="bg-white rounded-xl shadow-lg p-6 border border-gray-200 transition-all duration-300 ease-in-out hover:shadow-xl hover:scale-[1.02]">
@@ -69,7 +68,7 @@
             <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 shadow-sm">Unverified</span>
           {% elif cert.status == 'Rejected' %}
             <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gray-300 text-gray-800 shadow-sm">Rejected</span>
-          {% else %}
+          {% else %} {# Fallback for any unexpected status value #}
             <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gray-200 text-gray-800 shadow-sm">Unknown</span>
           {% endif %}
         </p>
@@ -88,8 +87,8 @@
           </p>
         {% endif %}
 
-        {# New: Display Granted Software/Modules #}
-        {% if cert.granted_software_modules %}
+        {# Display Granted Software/Modules #}
+        {% if cert.granted_software_modules | from_json %}
           <h4 class="text-sm font-semibold text-gray-700 mt-3 mb-1">Granted Software/Modules:</h4>
           <ul class="list-disc list-inside text-xs text-gray-600 space-y-0.5">
               {% for item in cert.granted_software_modules | from_json %}
@@ -97,13 +96,13 @@
               {% endfor %}
           </ul>
         {% endif %}
-        
-        
-        {% if cert.final_notes %} {# NEW: Display per-certificate note #}
-          <p class="mt-3 text-sm text-red-600 bold">  Final Notes: "{{ cert.final_notes }}"</p>
+
+        {# Display per-certificate note #}
+        {% if cert.final_notes %} 
+          <p class="mt-3 text-sm text-gray-600 italic">Final Notes: "{{ cert.final_notes }}"</p>
         {% endif %}
 
-        {# New: Modify Dates Button for Admin (HOD) #}
+        {# Modify Dates Button for Admin (HOD) #}
         {% if role == 'supervisor' or role == 'admin_hod' %}
           <button onclick="openEditCertDatesModal('{{ cert.id }}', '{{ cert.activation_date }}', '{{ cert.expiration_date }}')"
                   class="mt-4 flex items-center px-4 py-2 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition duration-200 ease-in-out transform hover:scale-105 text-sm">
@@ -116,9 +115,8 @@
   </div>
 </div>
 
-<!-- Modals -->
 {% include 'modals/add_customer_modal.html' %}
-{% include 'modals/add_certificate_modal.html' %} {# Removed 'with' clause #}
+{% include 'modals/add_certificate_modal.html' %}
 {% include 'modals/edit_certificate_dates_modal.html' %}
 
 {# Hidden div to store certificates data as a JSON string #}
@@ -171,7 +169,7 @@
 
   // Data for add_certificate_modal.html needs to be passed explicitly to the include.
   // We can't rely on global variables here because the modal's script might run before these are populated.
- 
+
   // The variables allSoftwareAppsData and allSoftwareModulesData here are for other potential dashboard scripts,
   // but the modal will get its own copy.
   allSoftwareAppsData = JSON.parse('{{ all_software_apps | tojson | safe }}' || '[]');
