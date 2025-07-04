@@ -1327,25 +1327,6 @@ def approve_reject_report(report_id):
         conn.close()
     return redirect(url_for('approval_queue'))
 
-# ... (rest of your routes) ...
-Action Required:
-
-Replace the existing approval_queue and approve_reject_report functions in your main.py file with the complete code provided above.
-
-Restart your Flask application.
-
-This ensures that report_id is correctly handled in both functions, and the approval_queue route properly fetches all necessary data for the template, including per-certificate notes.
-
-
-
-
-
-
-Video
-
-
-Gemini can make mistakes, so double-check it
-
 @app.route('/mark-sso-complete/<int:customer_id>', methods=["POST"])
 def mark_sso_complete(customer_id):
     if 'user_id' not in session:
