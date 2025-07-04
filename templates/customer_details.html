@@ -188,6 +188,9 @@
                   <span class="text-red-700">No ❌</span>
                 {% endif %}
               </p>
+{% if latest_report and latest_report.final_approver_notes %}
+                <p class="text-sm text-gray-600 mt-2 italic">Notes: "{{ latest_report.final_approver_notes }}"</p>
+              {% endif %}
               {% if cert.granted_software_modules %}
                 <h4 class="text-sm font-semibold text-gray-700 mt-3 mb-1">Granted Software/Modules:</h4>
                 <ul class="list-disc list-inside text-xs text-gray-600 space-y-0.5">
@@ -196,9 +199,7 @@
                     {% endfor %}
                 </ul>
               {% endif %}
- {% if latest_report and latest_report.final_approver_notes %}
-                <p class="text-sm text-gray-600 mt-2 italic">Notes: "{{ latest_report.final_approver_notes }}"</p>
-              {% endif %}
+ 
               {# New: Modify Dates Button for Supervisor and Admin (HOD) #}
               {% if session.role == 'supervisor' or session.role == 'admin_hod' %}
                 <button onclick="openEditCertDatesModal('{{ cert.id }}', '{{ cert.activation_date }}', '{{ cert.expiration_date }}')"
