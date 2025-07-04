@@ -1186,6 +1186,49 @@ def approval_queue():
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
+    if session.get("role") != "admin_hod": # Changed to admin_hod only
+        flash("Unauthorized access to approval queue.", "error")
+        return redirect(url_for('dashboard'))
+
+    conn = get_db_connection()
+    # Fetch all reports that are Awaiting Approval or Final Approval Pending
+    # We need rr.* to get all columns of the report, including its 'id'
+    reports = conn.execute("""
+        SELECT rr.*, c.name as customer_name, c.code as customer_code
+        FROM role_reports rr
+        JOIN customers c ON rr.customer_id = c.id
+        WHERE rr.status IN ('Awaiting Approval', 'Final Approval Pending')
+        ORDER BY rr.generated_date DESC
+    """).fetchall()
+
+    reports_with_certs = []
+    for report in reports:
+        report_dict = dict(report) # Convert sqlite3.Row to a dictionary
+        
+        # For 'Awaiting Approval' reports, fetch the unverified certificates
+        if report['status'] == 'Awaiting Approval':
+            certs = conn.execute("""
+                SELECT id, cert_type, status, activation_date, expiration_date, granted_software_modules, COALESCE(final_notes, '') as final_notes
+                FROM certificates
+                WHERE customer_id = ? AND verified = 0
+                ORDER BY cert_type ASC
+            """, (report['customer_id'],)).fetchall()
+            report_dict['certificates_for_approval'] = [dict(c) for c in certs]
+        else:
+            # For 'Final Approval Pending' reports, certificates are already processed, no new certs to approve here
+            report_dict['certificates_for_approval'] = []
+        
+        reports_with_certs.append(report_dict)
+
+    conn.close()
+    return render_template('approval_queue.html', reports=reports_with_certs, role=session.get("role"))
+
+
+@app.route('/approve-reject-report/<int:report_id>', methods=["POST"])
+def approve_reject_report(report_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
     if session.get("role") != "admin_hod":
         flash("Unauthorized to approve/reject reports.", "error")
         return redirect(url_for('approval_queue'))
@@ -1283,6 +1326,25 @@ def approval_queue():
     finally:
         conn.close()
     return redirect(url_for('approval_queue'))
+
+# ... (rest of your routes) ...
+Action Required:
+
+Replace the existing approval_queue and approve_reject_report functions in your main.py file with the complete code provided above.
+
+Restart your Flask application.
+
+This ensures that report_id is correctly handled in both functions, and the approval_queue route properly fetches all necessary data for the template, including per-certificate notes.
+
+
+
+
+
+
+Video
+
+
+Gemini can make mistakes, so double-check it
 
 @app.route('/mark-sso-complete/<int:customer_id>', methods=["POST"])
 def mark_sso_complete(customer_id):
