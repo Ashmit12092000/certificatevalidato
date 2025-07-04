@@ -15,7 +15,7 @@ from dateutil.relativedelta import relativedelta
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
 
-DATABASE = 'databas.db'
+DATABASE = 'databa.db'
 SUPERVISOR_EMAIL = "supervisor@gmail.com"
 ADMIN_HOD_EMAIL = "admin@gmail.com"
 
