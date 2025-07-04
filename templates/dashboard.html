@@ -98,9 +98,10 @@
           </ul>
         {% endif %}
         
-        {% if cert.final_approver_notes_from_report %}
-        <p class="mt-3 text-sm text-gray-600"><strong>Final Notes:</strong> <span class="font-medium italic">{{ cert.final_approver_notes_from_report }}</span></p>
-      {% endif %}
+        
+        {% if cert.final_notes %} {# NEW: Display per-certificate note #}
+          <p class="mt-3 text-sm text-red-600 bold">  Final Notes: "{{ cert.final_notes }}"</p>
+        {% endif %}
 
         {# New: Modify Dates Button for Admin (HOD) #}
         {% if role == 'supervisor' or role == 'admin_hod' %}
