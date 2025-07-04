@@ -7,7 +7,7 @@
       <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight">Customer Details: {{ customer.name }}</h1>
       <div class="flex items-center gap-3">
         {% if session.role == 'supervisor' or session.role == 'admin_hod' %} {# Only show button for these roles #}
-        <a href="{{ url_for('generate_customer_html_report', customer_id=customer.id) }}" target="_blank"
+        <a href="{{ url_for('print_customer_html_report', customer_id=customer.id) }}" target="_blank"
            class="px-5 py-2 bg-white text-blue-700 font-semibold rounded-lg shadow-md hover:bg-gray-100 transition duration-300 ease-in-out transform hover:scale-105">
           <svg class="w-5 h-5 inline-block mr-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M5 4V3a1 1 0 011-1h2a1 1 0 011 1v1h3v-1a1 1 0 011-1h2a1 1 0 011 1v1h3a2 2 0 012 2v10a2 2 0 01-2 2H3a2 2 0 01-2-2V6a2 2 0 012-2h3zm0 2h14v8a2 2 0 01-2 2H3a2 2 0 01-2-2V6h3z" clip-rule="evenodd"></path></svg>
           View/Print HTML Report
@@ -70,19 +70,19 @@
           <div class="md:col-span-2 lg:col-span-3">
             <label class="block text-sm font-medium text-gray-700 mb-1">Current Status:</label>
             {% if customer.status == 'Pending' %}
-              <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-yellow-100 text-yellow-800 shadow-sm">Pending</span>
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 shadow-sm">Pending</span>
             {% elif customer.status == 'Awaiting Approval' %}
-              <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-blue-100 text-blue-800 shadow-sm">Awaiting Approval</span>
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 shadow-sm">Awaiting Approval</span>
             {% elif customer.status == 'SSO Setup Pending' %}
-              <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-purple-100 text-purple-800 shadow-sm">SSO Setup Pending</span>
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 shadow-sm">SSO Setup Pending</span>
             {% elif customer.status == 'Final Approval Pending' %}
-              <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-indigo-100 text-indigo-800 shadow-sm">Final Approval Pending</span>
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800 shadow-sm">Final Approval Pending</span>
             {% elif customer.status == 'Verified' %}
-              <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-green-100 text-green-800 shadow-sm">Verified</span>
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800 shadow-sm">Verified</span>
             {% elif customer.status == 'Rejected' %}
-              <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-red-100 text-red-800 shadow-sm">Rejected</span>
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800 shadow-sm">Rejected</span>
             {% else %}
-              <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-gray-200 text-gray-800 shadow-sm">Unknown</span>
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gray-200 text-gray-800 shadow-sm">Unknown</span>
             {% endif %}
           </div>
           {% if latest_report %} {# Explicitly check if latest_report exists #}
@@ -202,7 +202,7 @@
               {# New: Modify Dates Button for Supervisor and Admin (HOD) #}
               {% if session.role == 'supervisor' or session.role == 'admin_hod' %}
                 <button onclick="openEditCertDatesModal('{{ cert.id }}', '{{ cert.activation_date }}', '{{ cert.expiration_date }}')"
-                        class="mt-4 flex items-center px-4 py-2 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition duration-200 ease-in-out transform hover:scale-105 text-sm cert-modify-button"> {# Added class #}
+                        class="mt-4 flex items-center px-4 py-2 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition duration-200 ease-in-out transform hover:scale-105 text-sm">
                   <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
                   Modify Dates
                 </button>
@@ -319,8 +319,12 @@
     const modulesCheckboxesDiv = document.getElementById('modules_checkboxes');
     const addCertModal = document.getElementById('addCertModal');
 
-    // Function to populate modules based on selected software
+    // This function should be defined within the modal's script or handle cases where elements are null
     function populateModules() {
+      if (!softwareSelect || !modulesCheckboxesDiv) {
+        console.warn("Software select or modules checkboxes div not found in modal.");
+        return;
+      }
       const selectedSoftwareId = softwareSelect.value;
       modulesCheckboxesDiv.innerHTML = ''; // Clear previous modules
 
@@ -370,4 +374,12 @@
     }
   });
 </script>
+
+
 {% endblock %}
+
+
+
+
+
+
