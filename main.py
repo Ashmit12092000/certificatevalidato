@@ -9,7 +9,6 @@ import csv
 import random
 import string
 import json
-from xhtml2pdf import pisa
 from dateutil.relativedelta import relativedelta
 
 # --- App Initialization ---
