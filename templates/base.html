@@ -40,10 +40,20 @@
         <a href="{{ url_for('report') }}" class="text-gray-600 hover:text-blue-600 font-medium transition duration-200">Customer Report</a>
       </div>
       <div class="flex items-center space-x-4">
-        {% if session.user_email %}
-          <span class="text-gray-700 font-semibold">{{ session.user_email }}</span>
-          <a href="{{ url_for('logout') }}" class="px-4 py-2 bg-red-500 text-white rounded-lg shadow-md hover:bg-red-600 transition duration-200">Logout</a>
-        {% endif %}
+        <div class="relative">
+          {% if session.user_name %}
+            <button id="user-menu-button" class="flex items-center text-gray-700 font-semibold hover:text-blue-600 transition duration-200 focus:outline-none px-3 py-1 rounded-lg hover:bg-gray-100">
+              {{ session.user_name }} ({{ session.role }})
+              <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+            </button>
+            
+            <div id="user-menu-dropdown" class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50 hidden border border-gray-200">
+              <a href="{{ url_for('change_password') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50">Change Password</a>
+              <a href="{{ url_for('logout') }}" class="block px-4 py-2 text-sm text-red-700 hover:bg-blue-50">Logout</a>
+            </div>
+          {% endif %}
+        </div>
+  
       </div>
     </div>
   </nav>
@@ -57,5 +67,24 @@
   <footer class="bg-gray-800 text-white py-4 text-center text-sm shadow-inner">
     &copy; 2025 Kakinada Seaports Limited. All rights reserved.
   </footer>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const userMenuButton = document.getElementById('user-menu-button');
+      const userMenuDropdown = document.getElementById('user-menu-dropdown');
+
+      if (userMenuButton && userMenuDropdown) {
+        userMenuButton.addEventListener('click', function() {
+          userMenuDropdown.classList.toggle('hidden');
+        });
+
+        // Close the dropdown if the user clicks outside of it
+        document.addEventListener('click', function(event) {
+          if (!userMenuButton.contains(event.target) && !userMenuDropdown.contains(event.target)) {
+            userMenuDropdown.classList.add('hidden');
+          }
+        });
+      }
+    });
+  </script>
 </body>
 </html>
