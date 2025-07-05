@@ -242,6 +242,8 @@ def login():
         if user and check_password_hash(user['password'], password):
             session["user_id"] = user["id"]
             session["user_email"] = user["email"]
+            session["user_name"] = user["name"]
+
             if user["email"] == SUPERVISOR_EMAIL.lower():
                 session["role"] = "supervisor"
             elif user["email"] == ADMIN_HOD_EMAIL.lower():
@@ -280,7 +282,53 @@ def signup():
         except sqlite3.IntegrityError:
             flash("Email already exists.", "error")
     return render_template('signup.html')
+@app.route('/change-password', methods=["GET", "POST"])
+def change_password():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
 
+    conn = get_db_connection()
+    user = conn.execute("SELECT * FROM users WHERE id = ?", (session['user_id'],)).fetchone()
+
+    if request.method == "POST":
+        current_password = request.form.get('current_password')
+        new_password = request.form.get('new_password')
+        confirm_new_password = request.form.get('confirm_new_password')
+
+        if not current_password or not new_password or not confirm_new_password:
+            flash("All fields are required.", "error")
+            conn.close()
+            return render_template('change_password.html', role=session.get('role'))
+
+        if not check_password_hash(user['password'], current_password):
+            flash("Current password does not match.", "error")
+            conn.close()
+            return render_template('change_password.html', role=session.get('role'))
+
+        if new_password != confirm_new_password:
+            flash("New password and confirm password do not match.", "error")
+            conn.close()
+            return render_template('change_password.html', role=session.get('role'))
+        
+        if len(new_password) < 6: # Example: minimum password length
+            flash("New password must be at least 6 characters long.", "error")
+            conn.close()
+            return render_template('change_password.html', role=session.get('role'))
+
+        try:
+            hashed_new_password = generate_password_hash(new_password)
+            conn.execute("UPDATE users SET password = ? WHERE id = ?", (hashed_new_password, session['user_id']))
+            conn.commit()
+            flash("Password changed successfully!", "success")
+            return redirect(url_for('dashboard')) # Redirect to dashboard after success
+        except Exception as e:
+            flash(f"An error occurred: {e}", "error")
+            print(f"Error changing password for user {session['user_id']}: {e}")
+        finally:
+            conn.close()
+    
+    conn.close()
+    return render_template('change_password.html', role=session.get('role'))
 @app.route('/dashboard')
 def dashboard():
     if 'user_id' not in session:
