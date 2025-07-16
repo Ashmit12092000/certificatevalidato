@@ -56,15 +56,15 @@
 
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
     {% for cert in certificates %}
-      <div class="bg-white rounded-xl shadow-lg p-6 border border-gray-200 transition-all duration-300 ease-in-out hover:shadow-xl hover:scale-[1.02]">
+      <div class="bg-white rounded-xl shadow-lg p-6 border border-gray-200 transition-all duration-300 ease-in-out hover:shadow-xl hover:scale-[1.02] relative">
         {% if role == 'admin_hod' %}
-        <form action="{{ url_for('delete_certificate', cert_id=cert.id) }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this certificate? This action cannot be undone.')" class="absolute top-3 right-3 z-10">
-            <button type="submit" class="text-gray-400 hover:text-red-600 transition duration-200" title="Delete Certificate">
-                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 011-1h4a1 1 0 110 2H8a1 1 0 01-1-1zm0 4a1 1 0 011-1h4a1 1 0 110 2H8a1 1 0 01-1-1z" clip-rule="evenodd"></path></svg>
+        <form action="{{ url_for('delete_certificate', cert_id=cert.id) }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this certificate? This action cannot be undone.')" class="absolute top-2 right-2 z-20">
+            <button type="submit" class="bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-full transition duration-200 shadow-md" title="Delete Certificate">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 011-1h4a1 1 0 110 2H8a1 1 0 01-1-1zm0 4a1 1 0 011-1h4a1 1 0 110 2H8a1 1 0 01-1-1z" clip-rule="evenodd"></path></svg>
             </button>
         </form>
         {% endif %}
-        <h2 class="text-xl font-bold text-gray-900 mb-3 truncate">{{ cert.customer_name }}</h2>
+        <h2 class="text-xl font-bold text-gray-900 mb-3 truncate pr-8">{{ cert.customer_name }}</h2>
         <p class="text-sm text-gray-600 mb-1"><strong>Type:</strong> <span class="font-medium text-gray-800">{{ cert.cert_type }}</span></p>
         <p class="text-sm text-gray-600 mb-1"><strong>Status:</strong>
           {% if cert.status == 'Active' %}
@@ -119,8 +119,8 @@
               Modify Dates
             </button>
             {# Modify Software Button - Right of Modify Dates #}
-            <button onclick="openModifySoftwareModal('{{ cert.id }}', '{{ cert.customer_name | e }} - {{ cert.cert_type | e }}', '{{ cert.granted_software_modules | safe }}')"
-                    class="flex items-center px-3 py-1 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 transition duration-200 ease-in-out transform hover:scale-105 text-sm">
+            <button data-cert-id="{{ cert.id }}" data-cert-label="{{ cert.customer_name | e }} - {{ cert.cert_type | e }}" data-granted-modules="{{ cert.granted_software_modules | safe }}"
+                    class="modify-software-btn flex items-center px-3 py-1 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 transition duration-200 ease-in-out transform hover:scale-105 text-sm">
               <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31 2.37-2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37.996-.608 2.296-.07 2.572 1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
               Modify Software
             </button>
@@ -183,7 +183,7 @@
       console.error("Element with ID 'certificates-data' not found.");
       certificatesData = []; // Fallback to empty array
   }
-  
+
 
   // Data for add_certificate_modal.html needs to be passed explicitly to the include.
   // We can't rely on global variables here because the modal's script might run before these are populated.
@@ -210,7 +210,7 @@
       certLabelSpan.textContent = certLabel;
       form.action = `/update-certificate-software/${certId}`;
       hiddenCertIdInput.value = certId;
-      
+
       // Clear previous blocks and reset counter
       softwareModulesContainer.innerHTML = '';
       modifySoftwareBlockCounter = 0; // Reset counter for this modal
@@ -294,7 +294,7 @@
           populateModifySoftwareModulesForBlock(currentSoftwareSelect.value, currentModulesCheckboxesDiv, preSelectedModuleIds);
           updateModifySoftwareGrantedModules(); // Update hidden field on software change
       });
-      
+
       // Attach listener for changes to checkboxes within this block
       currentModulesCheckboxesDiv.addEventListener('change', updateModifySoftwareGrantedModules);
 
@@ -369,7 +369,7 @@
   }
 
   // Event listener for "Add Software Assignment" button in modify modal
- 
+
   document.addEventListener('DOMContentLoaded', function() {
     const softwareSelect = document.getElementById('software_select');
     const modulesCheckboxesDiv = document.getElementById('modules_checkboxes');
@@ -378,6 +378,18 @@
     if (addModifySoftwareModuleBtn) {
         addModifySoftwareModuleBtn.addEventListener('click', () => createModifySoftwareModuleBlock());
     }
+
+    // Add event listeners for modify software buttons
+    document.querySelectorAll('.modify-software-btn').forEach(button => {
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            const certId = this.getAttribute('data-cert-id');
+            const certLabel = this.getAttribute('data-cert-label');
+            const grantedModules = this.getAttribute('data-granted-modules');
+            console.log('Modify Software button clicked for cert:', certId);
+            openModifySoftwareModal(certId, certLabel, grantedModules);
+        });
+    });
 
     // Attach submit listener to the modify form
     const modifySoftwareForm = document.getElementById('modifySoftwareForm');
@@ -395,7 +407,11 @@
         });
     }
 
-    // This function should be defined within the modal's script or handle cases where elements are null
+    // Global variables for software data
+    window.allSoftwareAppsData = {{ all_software_apps | tojson | safe }};
+    window.allSoftwareModulesData = {{ all_software_modules_json | safe }};
+
+    // Function to update modules based on selected software
     function populateModules() {
       if (!softwareSelect || !modulesCheckboxesDiv) {
         console.warn("Software select or modules checkboxes div not found in modal.");
