@@ -57,6 +57,13 @@
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
     {% for cert in certificates %}
       <div class="bg-white rounded-xl shadow-lg p-6 border border-gray-200 transition-all duration-300 ease-in-out hover:shadow-xl hover:scale-[1.02]">
+        {% if role == 'admin_hod' %}
+        <form action="{{ url_for('delete_certificate', cert_id=cert.id) }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this certificate? This action cannot be undone.')" class="absolute top-3 right-3 z-10">
+            <button type="submit" class="text-gray-400 hover:text-red-600 transition duration-200" title="Delete Certificate">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 011-1h4a1 1 0 110 2H8a1 1 0 01-1-1zm0 4a1 1 0 011-1h4a1 1 0 110 2H8a1 1 0 01-1-1z" clip-rule="evenodd"></path></svg>
+            </button>
+        </form>
+        {% endif %}
         <h2 class="text-xl font-bold text-gray-900 mb-3 truncate">{{ cert.customer_name }}</h2>
         <p class="text-sm text-gray-600 mb-1"><strong>Type:</strong> <span class="font-medium text-gray-800">{{ cert.cert_type }}</span></p>
         <p class="text-sm text-gray-600 mb-1"><strong>Status:</strong>
@@ -104,11 +111,20 @@
 
         {# Modify Dates Button for Admin (HOD) #}
         {% if role == 'supervisor' or role == 'admin_hod' %}
-          <button onclick="openEditCertDatesModal('{{ cert.id }}', '{{ cert.activation_date }}', '{{ cert.expiration_date }}')"
-                  class="mt-4 flex items-center px-4 py-2 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition duration-200 ease-in-out transform hover:scale-105 text-sm">
-            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-            Modify Dates
-          </button>
+          <div class="mt-4 flex flex-wrap gap-2 justify-end"> {# Use flex-wrap and gap for spacing #}
+            {# Modify Dates Button #}
+            <button onclick="openEditCertDatesModal('{{ cert.id }}', '{{ cert.activation_date }}', '{{ cert.expiration_date }}')"
+                    class="flex items-center px-3 py-1 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600 transition duration-200 ease-in-out transform hover:scale-105 text-sm">
+              <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+              Modify Dates
+            </button>
+            {# Modify Software Button - Right of Modify Dates #}
+            <button onclick="openModifySoftwareModal('{{ cert.id }}', '{{ cert.customer_name | e }} - {{ cert.cert_type | e }}', '{{ cert.granted_software_modules | safe }}')"
+                    class="flex items-center px-3 py-1 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 transition duration-200 ease-in-out transform hover:scale-105 text-sm">
+              <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31 2.37-2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37.996-.608 2.296-.07 2.572 1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+              Modify Software
+            </button>
+          </div>
         {% endif %}
       </div>
     {% endfor %}
@@ -118,6 +134,7 @@
 {% include 'modals/add_customer_modal.html' %}
 {% include 'modals/add_certificate_modal.html' %}
 {% include 'modals/edit_certificate_dates_modal.html' %}
+{% include 'modals/modify_certificate_software_modal.html' %} {# NEW MODAL INCLUSION #}
 
 {# Hidden div to store certificates data as a JSON string #}
 <div id="certificates-data" data-certificates="{{ certificates_json | safe }}" style="display: none;"></div>
@@ -166,6 +183,7 @@
       console.error("Element with ID 'certificates-data' not found.");
       certificatesData = []; // Fallback to empty array
   }
+  
 
   // Data for add_certificate_modal.html needs to be passed explicitly to the include.
   // We can't rely on global variables here because the modal's script might run before these are populated.
@@ -175,11 +193,207 @@
   allSoftwareAppsData = JSON.parse('{{ all_software_apps | tojson | safe }}' || '[]');
   allSoftwareModulesData = JSON.parse('{{ all_software_modules_json | safe }}' || '[]');
 
+  {# NEW: Function to open Modify Software Modal #}
+  function openModifySoftwareModal(certId, certLabel, grantedSoftwareModulesJson) {
+      const modal = document.getElementById('modifySoftwareModal');
+      const certLabelSpan = document.getElementById('modifySoftwareCertLabel');
+      const form = document.getElementById('modifySoftwareForm');
+      const hiddenCertIdInput = document.getElementById('modifySoftwareCertId');
+      const softwareModulesContainer = document.getElementById('modify_software_modules_container');
+      const addSoftwareModuleBtn = document.getElementById('addModifySoftwareModuleBtn');
 
+      if (!modal || !certLabelSpan || !form || !hiddenCertIdInput || !softwareModulesContainer || !addSoftwareModuleBtn) {
+          console.error("One or more elements for modifySoftwareModal not found.");
+          return;
+      }
+
+      certLabelSpan.textContent = certLabel;
+      form.action = `/update-certificate-software/${certId}`;
+      hiddenCertIdInput.value = certId;
+      
+      // Clear previous blocks and reset counter
+      softwareModulesContainer.innerHTML = '';
+      modifySoftwareBlockCounter = 0; // Reset counter for this modal
+
+      let preExistingModules = [];
+      try {
+          preExistingModules = JSON.parse(grantedSoftwareModulesJson || '[]');
+      } catch (e) {
+          console.error("Error parsing grantedSoftwareModulesJson:", e);
+      }
+
+      // Re-create blocks based on existing granted modules
+      if (preExistingModules.length > 0) {
+          // Group preExistingModules by software to create a block per software
+          const groupedBySoftware = preExistingModules.reduce((acc, module) => {
+              const softwareKey = `${module.software_id}-${module.software_name}`;
+              if (!acc[softwareKey]) {
+                  acc[softwareKey] = {
+                      software_id: module.software_id,
+                      software_name: module.software_name,
+                      modules: []
+                  };
+              }
+              acc[softwareKey].modules.push(module.module_id);
+              return acc;
+          }, {});
+
+          for (const key in groupedBySoftware) {
+              const group = groupedBySoftware[key];
+              createModifySoftwareModuleBlock(group.software_id, group.modules);
+          }
+      } else {
+          // If no existing modules, create one empty block
+          createModifySoftwareModuleBlock();
+      }
+
+      modal.classList.remove('hidden');
+  }
+
+  {# NEW: Function to close Modify Software Modal #}
+  function closeModifySoftwareModal() {
+      const modal = document.getElementById('modifySoftwareModal');
+      if (modal) {
+          modal.classList.add('hidden');
+      }
+      // Optional: Clear form or reset state if necessary when closing
+  }
+
+  {# NEW: Function to dynamically create a software/module block within Modify Software Modal #}
+  let modifySoftwareBlockCounter = 0; // Counter for dynamic blocks in this modal
+  function createModifySoftwareModuleBlock(preSelectedSoftwareId = '', preSelectedModuleIds = []) {
+      const softwareModulesContainer = document.getElementById('modify_software_modules_container');
+      const blockId = `modify-software-block-${modifySoftwareBlockCounter++}`;
+      const div = document.createElement('div');
+      div.id = blockId;
+      div.className = 'p-3 border border-gray-200 rounded-lg bg-gray-100 relative';
+      div.innerHTML = `
+          <button type="button" class="absolute top-2 right-2 text-gray-500 hover:text-red-700" onclick="document.getElementById('${blockId}').remove(); updateModifySoftwareGrantedModules();">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+          <div class="mb-3">
+              <label for="modify_software_select_${modifySoftwareBlockCounter - 1}" class="block text-sm font-medium text-gray-700 mb-1">Software:</label>
+              <select name="modify_software_select_${modifySoftwareBlockCounter - 1}" id="modify_software_select_${modifySoftwareBlockCounter - 1}" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                  <option value="">-- Select Software --</option>
+                  ${window.allSoftwareAppsData.map(app => 
+                      `<option value="${app.id}" ${preSelectedSoftwareId == app.id ? 'selected' : ''}>${app.name}</option>`
+                  ).join('')}
+              </select>
+          </div>
+          <div id="modify_modules_checkboxes_${modifySoftwareBlockCounter - 1}" class="space-y-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+              <p class="text-sm text-gray-500">Select a software to see modules.</p>
+          </div>
+      `;
+      softwareModulesContainer.appendChild(div);
+
+      const currentSoftwareSelect = div.querySelector(`#modify_software_select_${modifySoftwareBlockCounter - 1}`);
+      const currentModulesCheckboxesDiv = div.querySelector(`#modify_modules_checkboxes_${modifySoftwareBlockCounter - 1}`);
+
+      // Attach listener for changes to this block's software select
+      currentSoftwareSelect.addEventListener('change', function() {
+          populateModifySoftwareModulesForBlock(currentSoftwareSelect.value, currentModulesCheckboxesDiv, preSelectedModuleIds);
+          updateModifySoftwareGrantedModules(); // Update hidden field on software change
+      });
+      
+      // Attach listener for changes to checkboxes within this block
+      currentModulesCheckboxesDiv.addEventListener('change', updateModifySoftwareGrantedModules);
+
+      // Initial population for this newly created block
+      populateModifySoftwareModulesForBlock(currentSoftwareSelect.value, currentModulesCheckboxesDiv, preSelectedModuleIds);
+      updateModifySoftwareGrantedModules(); // Initial update after block creation
+  }
+
+  {# NEW: Function to populate modules for a specific block in Modify Software Modal #}
+  function populateModifySoftwareModulesForBlock(selectedSoftwareId, modulesCheckboxesDiv, preSelectedModuleIds = []) {
+      modulesCheckboxesDiv.innerHTML = ''; // Clear previous modules
+
+      if (selectedSoftwareId) {
+          const relevantModules = window.allSoftwareModulesData.filter(module => 
+              module.software_id == parseInt(selectedSoftwareId)
+          );
+
+          if (relevantModules.length > 0) {
+              relevantModules.forEach(module => {
+                  const checkboxDiv = document.createElement('div');
+                  checkboxDiv.className = 'flex items-center';
+                  const isChecked = preSelectedModuleIds.includes(module.id);
+                  checkboxDiv.innerHTML = `
+                      <input type="checkbox" name="modify_selected_module_${module.id}" value="${module.id}" id="modify_module_${module.id}"
+                            class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" ${isChecked ? 'checked' : ''}>
+                      <label for="modify_module_${module.id}" class="ml-2 block text-sm text-gray-700">${module.name}</label>
+                  `;
+                  modulesCheckboxesDiv.appendChild(checkboxDiv);
+              });
+          } else {
+              modulesCheckboxesDiv.innerHTML = '<p class="text-sm text-gray-500">No modules available for this software.</p>';
+          }
+      } else {
+          modulesCheckboxesDiv.innerHTML = '<p class="text-sm text-gray-500">Select a software to see modules.</p>';
+      }
+  }
+
+  {# NEW: Function to update the hidden input field with all selected modules for Modify Software Modal #}
+  function updateModifySoftwareGrantedModules() {
+      const allGrantedSoftwareModules = [];
+      const modifySoftwareForm = document.getElementById('modifySoftwareForm');
+
+      modifySoftwareForm.querySelectorAll('.p-3.border.border-gray-200').forEach((block) => {
+          const softwareSelect = block.querySelector(`select[name^="modify_software_select_"]`);
+          if (!softwareSelect || !softwareSelect.value) return; 
+
+          const selectedSoftwareId = parseInt(softwareSelect.value);
+          const selectedSoftwareName = window.allSoftwareAppsData.find(app => app.id === selectedSoftwareId)?.name || '';
+
+          block.querySelectorAll(`input[name^="modify_selected_module_"]:checked`).forEach(checkbox => {
+              const moduleId = parseInt(checkbox.value);
+              const moduleName = checkbox.nextElementSibling.textContent;
+
+              allGrantedSoftwareModules.push({
+                  software_id: selectedSoftwareId,
+                  software_name: selectedSoftwareName,
+                  module_id: moduleId,
+                  module_name: moduleName
+              });
+          });
+      });
+
+      let hiddenInput = document.getElementById('modify_granted_software_modules_input');
+      if (!hiddenInput) {
+          hiddenInput = document.createElement('input');
+          hiddenInput.type = 'hidden';
+          hiddenInput.name = 'granted_software_modules'; // Name expected by backend
+          hiddenInput.id = 'modify_granted_software_modules_input';
+          modifySoftwareForm.appendChild(hiddenInput);
+      }
+      hiddenInput.value = JSON.stringify(allGrantedSoftwareModules);
+  }
+
+  // Event listener for "Add Software Assignment" button in modify modal
+ 
   document.addEventListener('DOMContentLoaded', function() {
     const softwareSelect = document.getElementById('software_select');
     const modulesCheckboxesDiv = document.getElementById('modules_checkboxes');
     const addCertModal = document.getElementById('addCertModal');
+    const addModifySoftwareModuleBtn = document.getElementById('addModifySoftwareModuleBtn');
+    if (addModifySoftwareModuleBtn) {
+        addModifySoftwareModuleBtn.addEventListener('click', () => createModifySoftwareModuleBlock());
+    }
+
+    // Attach submit listener to the modify form
+    const modifySoftwareForm = document.getElementById('modifySoftwareForm');
+    if (modifySoftwareForm) {
+        modifySoftwareForm.addEventListener('submit', function(event) {
+            // updateModifySoftwareGrantedModules is already called on every checkbox/select change,
+            // so the hidden input is always up-to-date.
+            // Just ensure there's at least one module if required (optional validation)
+            const hiddenInput = document.getElementById('modify_granted_software_modules_input');
+            if (hiddenInput && JSON.parse(hiddenInput.value).length === 0) {
+                // event.preventDefault(); // Uncomment if you want to prevent submission for empty modules
+                // alert("Please select at least one module or remove software assignment blocks.");
+            }
+            // Form will submit normally as event.preventDefault() is not here
+        });
+    }
 
     // This function should be defined within the modal's script or handle cases where elements are null
     function populateModules() {
