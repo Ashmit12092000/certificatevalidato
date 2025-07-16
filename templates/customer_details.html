@@ -165,15 +165,15 @@
       {% if certificates %}
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {% for cert in certificates %}
-            <div class="bg-gray-50 rounded-lg shadow-md p-5 border border-gray-200 transition-all duration-300 ease-in-out hover:shadow-lg hover:border-blue-300">
+            <div class="bg-gray-50 rounded-lg shadow-md p-5 border border-gray-200 transition-all duration-300 ease-in-out hover:shadow-lg hover:border-blue-300 relative">
               {% if session.role == 'admin_hod' %}
-              <form action="{{ url_for('delete_certificate', cert_id=cert.id) }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this certificate? This action cannot be undone.')" class="absolute top-3 right-3 z-10">
-                  <button type="submit" class="text-gray-400 hover:text-red-600 transition duration-200" title="Delete Certificate">
-                      <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 011-1h4a1 1 0 110 2H8a1 1 0 01-1-1zm0 4a1 1 0 011-1h4a1 1 0 110 2H8a1 1 0 01-1-1z" clip-rule="evenodd"></path></svg>
+              <form action="{{ url_for('delete_certificate', cert_id=cert.id) }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this certificate? This action cannot be undone.')" class="absolute top-2 right-2 z-20">
+                  <button type="submit" class="bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-full transition duration-200 shadow-md" title="Delete Certificate">
+                      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 011-1h4a1 1 0 110 2H8a1 1 0 01-1-1zm0 4a1 1 0 011-1h4a1 1 0 110 2H8a1 1 0 01-1-1z" clip-rule="evenodd"></path></svg>
                   </button>
               </form>
               {% endif %}
-              <h3 class="text-lg font-semibold text-gray-800 mb-3">{{ cert.cert_type }}</h3>
+              <h3 class="text-lg font-semibold text-gray-800 mb-3 pr-8">{{ cert.cert_type }}</h3>
               <p class="text-sm text-gray-600 mb-1"><strong>Status:</strong>
                 {% if cert.status == 'Active' %}
                   <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">Active</span>
@@ -217,8 +217,8 @@
                     Modify Dates
                   </button>
                   {# Modify Software Button - Right of Modify Dates #}
-                  <button onclick="openModifySoftwareModal('{{ cert.id }}', '{{ customer.name | e }} - {{ cert.cert_type | e }}', '{{ cert.granted_software_modules | safe }}')"
-                          class="flex items-center px-3 py-1 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 transition duration-200 ease-in-out transform hover:scale-105 text-sm">
+                  <button data-cert-id="{{ cert.id }}" data-cert-label="{{ customer.name | e }} - {{ cert.cert_type | e }}" data-granted-modules="{{ cert.granted_software_modules | safe }}"
+                          class="modify-software-btn flex items-center px-3 py-1 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 transition duration-200 ease-in-out transform hover:scale-105 text-sm">
                     <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31 2.37-2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37.996-.608 2.296-.07 2.572 1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                     Modify Software
                   </button>
@@ -265,7 +265,10 @@
     modal.classList.remove('hidden');
   }
   let modifySoftwareBlockCounter = 0; // Global counter for dynamic blocks in this specific modal
+  
   function openModifySoftwareModal(certId, certLabel, grantedSoftwareModulesJson) {
+      console.log('Opening modify software modal for cert:', certId);
+      
       const modal = document.getElementById('modifySoftwareModal');
       const certLabelSpan = document.getElementById('modifySoftwareCertLabel');
       const form = document.getElementById('modifySoftwareForm');
@@ -274,12 +277,19 @@
       const addSoftwareModuleBtn = document.getElementById('addModifySoftwareModuleBtn');
 
       if (!modal || !certLabelSpan || !form || !hiddenCertIdInput || !softwareModulesContainer || !addSoftwareModuleBtn) {
-          console.error("One or more elements for modifySoftwareModal not found.");
+          console.error("One or more elements for modifySoftwareModal not found:", {
+              modal: !!modal,
+              certLabelSpan: !!certLabelSpan,
+              form: !!form,
+              hiddenCertIdInput: !!hiddenCertIdInput,
+              softwareModulesContainer: !!softwareModulesContainer,
+              addSoftwareModuleBtn: !!addSoftwareModuleBtn
+          });
           return;
       }
 
       certLabelSpan.textContent = certLabel;
-      form.action = `/update-certificate-software/${certId}`; // New route for updating software
+      form.action = `/update-certificate-software/${certId}`;
       hiddenCertIdInput.value = certId;
       
       // Clear previous blocks and reset counter for a clean slate each time modal opens
@@ -297,12 +307,12 @@
       if (preExistingModules.length > 0) {
           // Group preExistingModules by software to create a block per unique software assigned
           const groupedBySoftware = preExistingModules.reduce((acc, module) => {
-              const softwareKey = `${module.software_id}`; // Group by software ID
+              const softwareKey = `${module.software_id}`;
               if (!acc[softwareKey]) {
                   acc[softwareKey] = {
                       software_id: module.software_id,
                       software_name: module.software_name,
-                      modules_ids: [] // Store only module IDs for pre-selection
+                      modules_ids: []
                   };
               }
               acc[softwareKey].modules_ids.push(module.module_id);
@@ -334,50 +344,66 @@
   function createModifySoftwareModuleBlock(preSelectedSoftwareId = '', preSelectedModuleIds = []) {
       const softwareModulesContainer = document.getElementById('modify_software_modules_container');
       const blockId = `modify-software-block-${modifySoftwareBlockCounter++}`;
+      const blockIndex = modifySoftwareBlockCounter - 1;
+      
       const div = document.createElement('div');
       div.id = blockId;
       div.className = 'p-3 border border-gray-200 rounded-lg bg-gray-100 relative';
+      
+      // Build options for software select
+      let softwareOptions = '<option value="">-- Select Software --</option>';
+      if (window.allSoftwareAppsData && window.allSoftwareAppsData.length > 0) {
+          softwareOptions += window.allSoftwareAppsData.map(app => 
+              `<option value="${app.id}" ${preSelectedSoftwareId == app.id ? 'selected' : ''}>${app.name}</option>`
+          ).join('');
+      }
+      
       div.innerHTML = `
           <button type="button" class="absolute top-2 right-2 text-gray-500 hover:text-red-700" onclick="document.getElementById('${blockId}').remove(); updateModifySoftwareGrantedModules();">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
           </button>
           <div class="mb-3">
-              <label for="modify_software_select_${modifySoftwareBlockCounter - 1}" class="block text-sm font-medium text-gray-700 mb-1">Software:</label>
-              <select name="modify_software_select_${modifySoftwareBlockCounter - 1}" id="modify_software_select_${modifySoftwareBlockCounter - 1}" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
-                  <option value="">-- Select Software --</option>
-                  ${window.allSoftwareAppsData.map(app => 
-                      `<option value="${app.id}" ${preSelectedSoftwareId == app.id ? 'selected' : ''}>${app.name}</option>`
-                  ).join('')}
+              <label for="modify_software_select_${blockIndex}" class="block text-sm font-medium text-gray-700 mb-1">Software:</label>
+              <select name="modify_software_select_${blockIndex}" id="modify_software_select_${blockIndex}" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                  ${softwareOptions}
               </select>
           </div>
-          <div id="modify_modules_checkboxes_${modifySoftwareBlockCounter - 1}" class="space-y-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+          <div id="modify_modules_checkboxes_${blockIndex}" class="space-y-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
               <p class="text-sm text-gray-500">Select a software to see modules.</p>
           </div>
       `;
       softwareModulesContainer.appendChild(div);
 
-      const currentSoftwareSelect = div.querySelector(`#modify_software_select_${modifySoftwareBlockCounter - 1}`);
-      const currentModulesCheckboxesDiv = div.querySelector(`#modify_modules_checkboxes_${modifySoftwareBlockCounter - 1}`);
+      const currentSoftwareSelect = div.querySelector(`#modify_software_select_${blockIndex}`);
+      const currentModulesCheckboxesDiv = div.querySelector(`#modify_modules_checkboxes_${blockIndex}`);
 
       // Attach listener for changes to this block's software select
-      currentSoftwareSelect.addEventListener('change', function() {
-          populateModifySoftwareModulesForBlock(currentSoftwareSelect.value, currentModulesCheckboxesDiv, preSelectedModuleIds);
-          updateModifySoftwareGrantedModules(); // Update hidden field on software change
-      });
+      if (currentSoftwareSelect) {
+          currentSoftwareSelect.addEventListener('change', function() {
+              populateModifySoftwareModulesForBlock(currentSoftwareSelect.value, currentModulesCheckboxesDiv, preSelectedModuleIds);
+              updateModifySoftwareGrantedModules();
+          });
+      }
       
       // Attach listener for changes to checkboxes within this block
-      currentModulesCheckboxesDiv.addEventListener('change', updateModifySoftwareGrantedModules);
+      if (currentModulesCheckboxesDiv) {
+          currentModulesCheckboxesDiv.addEventListener('change', updateModifySoftwareGrantedModules);
+      }
 
       // Initial population for this newly created block
-      populateModifySoftwareModulesForBlock(currentSoftwareSelect.value, currentModulesCheckboxesDiv, preSelectedModuleIds);
-      updateModifySoftwareGrantedModules(); // Initial update after block creation
+      if (preSelectedSoftwareId) {
+          populateModifySoftwareModulesForBlock(preSelectedSoftwareId, currentModulesCheckboxesDiv, preSelectedModuleIds);
+      }
+      updateModifySoftwareGrantedModules();
   }
 
   {# NEW: Function to populate modules for a specific block in Modify Software Modal #}
   function populateModifySoftwareModulesForBlock(selectedSoftwareId, modulesCheckboxesDiv, preSelectedModuleIds = []) {
+      if (!modulesCheckboxesDiv) return;
+      
       modulesCheckboxesDiv.innerHTML = ''; // Clear previous modules
 
-      if (selectedSoftwareId) {
+      if (selectedSoftwareId && window.allSoftwareModulesData) {
           const relevantModules = window.allSoftwareModulesData.filter(module => 
               module.software_id == parseInt(selectedSoftwareId)
           );
@@ -385,12 +411,14 @@
           if (relevantModules.length > 0) {
               relevantModules.forEach(module => {
                   const checkboxDiv = document.createElement('div');
-                  checkboxDiv.className = 'flex items-center';
+                  checkboxDiv.className = 'flex items-center space-x-2';
                   const isChecked = preSelectedModuleIds.includes(module.id);
+                  const uniqueId = `modify_module_${selectedSoftwareId}_${module.id}_${Date.now()}`;
+                  
                   checkboxDiv.innerHTML = `
-                      <input type="checkbox" name="modify_selected_module_${module.id}" value="${module.id}" id="modify_module_${module.id}"
+                      <input type="checkbox" name="modify_selected_module_${module.id}" value="${module.id}" id="${uniqueId}"
                             class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" ${isChecked ? 'checked' : ''}>
-                      <label for="modify_module_${module.id}" class="ml-2 block text-sm text-gray-700">${module.name}</label>
+                      <label for="${uniqueId}" class="block text-sm text-gray-700">${module.name}</label>
                   `;
                   modulesCheckboxesDiv.appendChild(checkboxDiv);
               });
@@ -487,6 +515,10 @@
 
 
   document.addEventListener('DOMContentLoaded', function() {
+    // Set global variables
+    window.allSoftwareAppsData = JSON.parse('{{ all_software_apps | tojson | safe }}' || '[]');
+    window.allSoftwareModulesData = JSON.parse('{{ all_software_modules_json | safe }}' || '[]');
+
     // Get button elements for customer details modification
     const modifyButton = document.getElementById('modifyButton');
     const saveButton = document.getElementById('saveButton');
@@ -503,9 +535,27 @@
       cancelButton.addEventListener('click', cancelEditMode);
     }
 
+    // Add event listener for the "Add Software Assignment" button
+    const addModifySoftwareModuleBtn = document.getElementById('addModifySoftwareModuleBtn');
+    if (addModifySoftwareModuleBtn) {
+        addModifySoftwareModuleBtn.addEventListener('click', () => createModifySoftwareModuleBlock());
+    }
+
+    // Add event listeners for modify software buttons
+    document.querySelectorAll('.modify-software-btn').forEach(button => {
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            const certId = this.getAttribute('data-cert-id');
+            const certLabel = this.getAttribute('data-cert-label');
+            const grantedModules = this.getAttribute('data-granted-modules');
+            console.log('Modify Software button clicked for cert:', certId);
+            openModifySoftwareModal(certId, certLabel, grantedModules);
+        });
+    });
+
     // Existing code for software/modules and certificates data (kept as is)
-    const allSoftwareAppsData = JSON.parse('{{ all_software_apps | tojson | safe }}' || '[]');
-    const allSoftwareModulesData = JSON.parse('{{ all_software_modules_json | safe }}' || '[]');
+    const allSoftwareAppsData = window.allSoftwareAppsData;
+    const allSoftwareModulesData = window.allSoftwareModulesData;
     const certificatesData = JSON.parse(document.getElementById('certificates-data').dataset.certificates || '[]');
 
     const softwareSelect = document.getElementById('software_select');
@@ -555,7 +605,7 @@
       const observer = new MutationObserver((mutationsList, observer) => {
         for (const mutation of mutationsList) {
           if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-            if (!addCertModal.classList.contains('hidden')) {
+            if (!addCertModal.classList.contains('hidden') && softwareSelect && modulesCheckboxesDiv) {
               populateModules();
               // Disconnect observer after first successful populate to prevent re-triggering
               observer.disconnect(); 
@@ -565,6 +615,8 @@
       });
       observer.observe(addCertModal, { attributes: true });
     }
+
+    
   });
 </script>
 
