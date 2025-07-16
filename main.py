@@ -163,7 +163,110 @@ def edit_customer_certificates(customer_id):
                            all_software_modules_json=all_software_modules_json, # Pass as JSON string
                            role=session.get("role")
                            )
+@app.route('/update-certificate-software/<int:cert_id>', methods=["POST"])
+def update_certificate_software(cert_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    if session.get("role") not in ["supervisor", "admin_hod"]:
+        flash("Unauthorized to modify certificate software.", "error")
+        return redirect(url_for('dashboard'))
 
+    granted_software_modules_json = request.form.get('granted_software_modules')
+    
+    granted_software_modules = []
+    if granted_software_modules_json:
+        try:
+            parsed_modules = json.loads(granted_software_modules_json)
+            if isinstance(parsed_modules, list):
+                granted_software_modules = parsed_modules
+            else:
+                flash("Invalid software/modules data format.", "error")
+                return redirect(url_for('dashboard'))
+        except json.JSONDecodeError:
+            flash("Error parsing software/modules data.", "error")
+            return redirect(url_for('dashboard'))
+
+    conn = get_db_connection()
+    try:
+        cert = conn.execute("SELECT * FROM certificates WHERE id = ?", (cert_id,)).fetchone()
+        if not cert:
+            flash("Certificate not found.", "error")
+            return redirect(url_for('dashboard'))
+
+        conn.execute("""
+            UPDATE certificates SET 
+                granted_software_modules = ?,
+                verified = 0 -- Reset verified status to 0 to trigger re-approval
+            WHERE id = ?
+        """, (json.dumps(granted_software_modules), cert_id))
+        
+        # Also reset customer status to Pending to re-initiate workflow
+        customer_id = cert['customer_id']
+        customer = conn.execute("SELECT status FROM customers WHERE id = ?", (customer_id,)).fetchone()
+        if customer and customer['status'] != 'Pending': # Only reset if not already Pending
+            conn.execute("UPDATE customers SET status = 'Pending' WHERE id = ?", (customer_id,))
+            conn.execute("DELETE FROM role_reports WHERE customer_id = ?", (customer_id,)) # Clear old reports
+            flash("Certificate software updated. Customer status reset to Pending for re-approval workflow.", "success")
+        else:
+            flash("Certificate software updated successfully! It requires approval.", "success")
+
+        conn.commit()
+
+    except Exception as e:
+        print(f"Error updating certificate software for cert_id {cert_id}: {e}")
+        flash(f"Error updating certificate software: {e}", "error")
+    finally:
+        conn.close()
+    
+    # Redirect back to the page where the user clicked the button (Dashboard or Customer Details)
+    # You might pass a 'next' URL parameter or determine referrer if you want more specific redirection
+    if request.referrer and 'customer-details' in request.referrer:
+        return redirect(url_for('customer_details', customer_id=cert['customer_id']))
+    return redirect(url_for('dashboard'))
+
+
+@app.route('/delete-certificate/<int:cert_id>', methods=['POST'])
+def delete_certificate(cert_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    if session.get("role") not in ["supervisor", "admin_hod"]:
+        flash("Unauthorized to delete certificates.", "error")
+        return redirect(url_for('dashboard'))
+
+    conn = get_db_connection()
+    try:
+        cert = conn.execute("SELECT customer_id FROM certificates WHERE id = ?", (cert_id,)).fetchone()
+        if not cert:
+            flash("Certificate not found.", "error")
+            return redirect(url_for('dashboard')) # Or redirect to manage_customers
+
+        customer_id = cert['customer_id']
+        
+        conn.execute("DELETE FROM certificates WHERE id = ?", (cert_id,))
+        conn.commit()
+
+        # Check if the customer still has any certificates. If not, revert status to Pending.
+        remaining_certs = conn.execute("SELECT COUNT(*) FROM certificates WHERE customer_id = ?", (customer_id,)).fetchone()[0]
+        if remaining_certs == 0:
+            conn.execute("UPDATE customers SET status = 'Pending' WHERE id = ?", (customer_id,))
+            conn.execute("DELETE FROM role_reports WHERE customer_id = ?", (customer_id,)) # Clear reports if no certs left
+            flash("Customer status reverted to Pending as no certificates remain.", "info")
+        
+        flash("Certificate deleted successfully!", "success")
+
+    except Exception as e:
+        print(f"Error deleting certificate {cert_id}: {e}")
+        flash(f"Error deleting certificate: {e}", "error")
+    finally:
+        conn.close()
+    
+    # Redirect back to the page that likely lists the certificates (Dashboard or Customer Details)
+    # You might pass a 'next' URL parameter or determine referrer if you want more specific redirection
+    if request.referrer and 'customer-details' in request.referrer:
+        return redirect(url_for('customer_details', customer_id=customer_id))
+    return redirect(url_for('dashboard'))
 @app.route('/update-customer-certificates/<int:customer_id>', methods=["POST"])
 def update_customer_certificates(customer_id):
     if 'user_id' not in session:
